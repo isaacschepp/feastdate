@@ -546,11 +546,10 @@ def test_day_counted_from_a_feast_agrees_with_the_named_sundays(cal):
     ('Feria 4 Freitag post Oculi 1680', 'two different days'),
     ('Freitag nach Dom. post Oculi 1680', 'more than one of'),
     ('2. Freitag nach Jubilate 1680', 'counts sundays, not fridays'),
-    ('Dom. 2. post Martini 1680', 'only easter, trinity and epiphany'),
-    ('Dom. 2. ante Pascha 1680', 'only easter, trinity and epiphany'),
+    ('Dom. 2. post Martini 1680', 'only easter, pentecost, trinity and epiphany'),
+    ('Dom. 2. ante Pascha 1680', 'only easter, pentecost, trinity and epiphany'),
+    ('Dom. 2. ante Pent. 1680', 'only easter, pentecost, trinity and epiphany'),
     ('Dom. 7. post Pascha 1680', 'run 1 to 6, not 7'),
-    # The Catholic count from Pentecost is its own issue, not an offset from Trinity.
-    ('Dom. 2. post Pent. 1680', 'catholic count'),
     ('Freitag nach Karfreitag Montag 1680', 'from a sunday'),
     ('Dom. post Jubilate Freitag 1680', 'is a sun'),   # a weekday after the feast checks it
     ('Freitag nach 1680', 'no feast'),
@@ -572,3 +571,68 @@ def test_day_counted_from_a_feast_cli(capsys):
     assert main(['Freitag nach Jubilate 1680']) == 0
     assert capsys.readouterr().out == ('Freitag nach Jubilate 1680 = Fri 7 May 1680 (Julian)'
                                        '   [Friday after jubilate]\n')
+
+
+# Sundays numbered after Pentecost, the Catholic count, and the last Sunday after Trinity
+# (#7). Pentecost 1680 (Julian) is 30 May; Advent 1 is 28 Nov.
+@pytest.mark.parametrize('text, cal, want, what', [
+    ('Dom. 5. post Pent. 1680', 'P', 'Sun 4 Jul 1680 (Julian)', '5. Sunday after pent'),
+    ('Dominica 5. post Pentecosten 1680', 'P', 'Sun 4 Jul 1680 (Julian)', None),
+    ('Dom. V. nach Pfingsten 1680', 'P', 'Sun 4 Jul 1680 (Julian)', None),
+    ('Dom. 1. post Pent. 1680', 'P', 'Sun 6 Jun 1680 (Julian)', None),
+    ('Dom. 25. post Pent. 1680', 'P', 'Sun 21 Nov 1680 (Julian)', None),
+    ('Dom. 5. post Pent. 1680', 'G', 'Sun 14 Jul 1680 (Gregorian)', None),
+    ('Dom. ult. p. Trin. 1680', 'P', 'Sun 21 Nov 1680 (Julian)', 'last Sunday after Trinity'),
+    ('Dom. ult. Trin. 1680', 'P', 'Sun 21 Nov 1680 (Julian)', None),
+    ('letzter Sonntag nach Trinitatis 1680', 'P', 'Sun 21 Nov 1680 (Julian)', None),
+    ('Dom. ultima post Pent. 1680', 'P', 'Sun 21 Nov 1680 (Julian)',
+     'last Sunday after Pentecost'),
+    ('Dominica ultima post Pentecosten 1680', 'G', 'Sun 24 Nov 1680 (Gregorian)', None),
+    # Prussia ordered it in 1816; the first fell on 24 Nov 1816.
+    ('Totensonntag 1816', 'P', 'Sun 24 Nov 1816 (Gregorian)', None),
+    ('Ewigkeitssonntag 1850', 'P', 'Sun 24 Nov 1850 (Gregorian)', None),
+    ('Freitag nach Totensonntag 1850', 'P', 'Fri 29 Nov 1850 (Gregorian)', None),
+])
+def test_sundays_after_pentecost_and_the_last_sunday(text, cal, want, what):
+    assert feast_date(text, cal=cal) == want
+    if what:
+        assert resolve(text, cal=cal)[1] == what
+
+
+@pytest.mark.parametrize('cal', ['P', 'G', 'J'])
+def test_pentecost_count_agrees_with_trinity_count(cal):
+    """Dom. n+1 post Pent. is Dom. n. p. Trin., one more Sunday runs to Advent, and the last
+    Sunday after Trinity or Pentecost is the last numbered one, a week before Advent 1."""
+    for yr in range(1600, 1800):
+        assert resolve('Dom. 1. post Pent.', yr, cal)[0] == resolve('Trinitatis', yr, cal)[0]
+        trin = _sundays('Dom. {}. Trin.', yr, cal)
+        pent = _sundays('Dom. {}. post Pent.', yr, cal)
+        assert pent[1:] == trin, (yr, cal)
+        assert 23 <= len(pent) <= 28, (yr, cal, len(pent))
+        adv = resolve('Dom. 1. Adv.', yr, cal)[0]
+        for name in ('Dom. ult. p. Trin.', 'Dom. ult. post Pent.',
+                     'letzter Sonntag nach Trinitatis'):
+            assert resolve(name, yr, cal)[0] == trin[-1] == adv - 7, (name, yr, cal)
+
+
+def test_last_sunday_1680_is_the_24th():
+    assert resolve('Dom. ult. p. Trin. 1680')[0] == resolve('Dom. 24. p. Trin. 1680')[0]
+
+
+@pytest.mark.parametrize('bad, why', [
+    ('Dom. 26. post Pent. 1680', 'there were 25 sundays after pentecost in 1680, not 26'),
+    ('Dom. 0. post Pent. 1680', 'not 0'),
+    ('Dom. ult. p. Epiph. 1680', 'trinity or pentecost only'),
+    ('Dom. ult. p. Pascha 1680', 'trinity or pentecost only'),
+    ('Dom. ult. ante Trin. 1680', 'last sunday after the feast'),
+    ('ult. Freitag nach Trin. 1680', 'last sunday after the feast'),
+    ('Dom. ult. 3. p. Trin. 1680', 'more than one ordinal'),
+    ('Fer. 2. ult. p. Trin. 1680', 'more than one ordinal'),
+    ('letzter Pfingsten 1680', 'names the last day of a feast'),
+    ('Totensonntag 1815', 'ordered in prussia in 1816'),
+    ('2. Totensonntag 1850', 'a number is not used'),
+])
+def test_sundays_after_pentecost_refused(bad, why):
+    with pytest.raises(FeastError) as e:
+        resolve(bad)
+    assert why in str(e.value).lower()

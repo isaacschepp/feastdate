@@ -244,6 +244,9 @@ EASTER_REL = [
     (('pasch', 'ostern', 'oster', 'easter'), 0),
 ]
 TRIN = ('trinit', 'trin', 'dreifaltig')
+# The last Sunday before Advent, as the Prussian church named it from 1816.
+TOTEN = ('totensonnt', 'totenfest', 'ewigkeitssonnt')
+TOTEN_FROM = 1816
 ADV = ('advent', 'adv')
 EPIPH = ('epiph',)
 FERIA = ('feria', 'fer')
@@ -318,7 +321,9 @@ ORD_WORDS = [(r'(?:erst|zweit|dritt|viert)(?:e|er|en|es|em)?', ('erst', 'zweit',
              (r'(?:prim|secund|terti|quart|quint|sext|septim)(?:a|o|ae|am|us|um|i)?',
               ('prim', 'secund', 'terti', 'quart', 'quint', 'sext', 'septim')),
              (r'(?:first|second|third|fourth)', ('first', 'second', 'third', 'fourth'))]
-LAST_RE = r'letzt(?:e|er|en|es|em)?'
+# `letzter Ostertag` is the last day of a feast; `Dom. ult. p. Trin.` and `letzter Sonntag
+# nach Trinitatis` the last Sunday after Trinity (or Pentecost), the one before Advent.
+LAST_RE = r'letzt(?:e|er|en|es|em)?|ult(?:im(?:a|o|am|ae|us|um|i))?'
 # Words that connect a feast name to the rest of the entry and add nothing to the date.
 FILLER = {'dom', 'dni', 'die', 'dies', 'festo', 'festum', 'fest', 'festi', 'feast', 'day',
           'in', 'am', 'an', 'den', 'der', 'dem', 'des', 'd', 'the', 'of', 'war', 'als', 'ipso',
@@ -437,7 +442,9 @@ def _feasts(words):
     for i, w in enumerate(words):
         if i in taken:
             continue
-        if starts(w, TRIN):
+        if starts(w, TOTEN):
+            add(('toten', None), i)
+        elif starts(w, TRIN):
             add(('trin', None), i)
         elif starts(w, ADV):
             add(('adv', None), i)
@@ -464,13 +471,16 @@ def resolve(text, year=None, cal='P'):
     An ordinal before a German feast day counts the day of the feast: ``2. Ostertag`` and
     ``der dritte Pfingsttag`` are Easter Monday and Whit Tuesday. A day named before
     ``post`` / ``nach`` / ``vor`` / ``ante`` is counted from the feast after it, strictly:
-    ``Freitag nach Jubilate``, ``Dom. p. Nativ.``, ``Sonnabend vor Palmarum``.
+    ``Freitag nach Jubilate``, ``Dom. p. Nativ.``, ``Sonnabend vor Palmarum``. The Catholic
+    ``Dom. 5. post Pent.`` counts Sundays from Pentecost, and ``Dom. ult. p. Trin.`` is the
+    last Sunday before Advent.
 
     Raises :class:`FeastError` when nothing can be resolved, and when any word or number
     in the text is not accounted for, rather than resolve the rest and drop it.
     """
     toks = tokens(text)
     nums, words, last = [], [], False
+    last_word = None
     for w in toks:
         m = re.fullmatch(NUM_RE, w)
         if m:
@@ -487,7 +497,7 @@ def resolve(text, year=None, cal='P'):
             nums.append(r)
             continue
         if re.fullmatch(LAST_RE, w):
-            last = True
+            last, last_word = True, w
             continue
         for part in split_weekday(w):
             words.extend(split_day(part))
@@ -516,7 +526,7 @@ def resolve(text, year=None, cal='P'):
 
     if not found:
         if n is not None and post:
-            raise FeastError('"post" with no feast named: say which (Trin., Epiph.)')
+            raise FeastError('"post" with no feast named: say which (Trin., Pent., Epiph.)')
         raise FeastError('no feast recognised in %r%s' % (
             text, ' (unrecognised: %s)' % ', '.join(unknown) if unknown else ''))
     if unknown:
@@ -528,8 +538,18 @@ def resolve(text, year=None, cal='P'):
         if not ok:
             raise FeastError('%s in %r' % (why, text))
 
-    if last:
-        refuse_unless(tag and not feria, '"letzter" names the last day of a feast (letzter Ostertag)')
+    pent = kind == 'easter' and EASTER_REL[key][1] == 49
+    # `Dom. ult. p. Trin.`, `letzter Sonntag nach Trinitatis`, `Dom. ult. Trin.`: the last
+    # Sunday after Trinity or Pentecost, the one before Advent. `letzter Ostertag` is not.
+    ultimo = last and not tag and (bool(post) or kind == 'trin')
+    if last and not ultimo:
+        refuse_unless(tag and not feria, '"%s" names the last day of a feast (letzter Ostertag) '
+                      'or the last Sunday after Trinity (Dom. ult. p. Trin.)' % last_word)
+    if ultimo:
+        refuse_unless(kind == 'trin' or pent, '"%s" counts the last Sunday after Trinity or '
+                      'Pentecost only' % last_word)
+        refuse_unless(not feria, '"%s" names a Sunday, not a feria' % last_word)
+        n = None
     if feria:
         refuse_unless(n is not None, 'feria needs its number (Fer. 2. Pent.)')
         refuse_unless(1 <= n <= 7, 'feria counts the days of the week, 1 to 7, not %d' % n)
@@ -555,10 +575,15 @@ def resolve(text, year=None, cal='P'):
         target = days.pop() if days else None
         check = [i for i in check if i > r]
         shift = [i for i in shift if i > r]
+        if ultimo:
+            refuse_unless(not ante and target == 6 and not shift,
+                          '"%s ... %s" is the last Sunday after the feast: Dom. ult. p. Trin.'
+                          % (last_word, rel))
+            target = None
         # `Dom. 5. p. Epiph.`, `Dom XXIII post Trin.`: the numbered Sundays, counted below.
         numbered = (kind in ('trin', 'epiph') and n is not None and not ante and not feria
                     and target in (None, 6))
-        if not numbered:
+        if not numbered and not ultimo:
             refuse_unless(target is not None, '"%s" needs the day it counts: Dom., Freitag, '
                           'Feria 6' % rel)
             if feria:
@@ -568,14 +593,19 @@ def resolve(text, year=None, cal='P'):
         if count is not None:
             refuse_unless(target == 6, 'a number before "%s" counts Sundays, not %ss'
                           % (rel, FERIA_DAY[target]))
-            refuse_unless(not (kind == 'easter' and EASTER_REL[key][1] == 49),
-                          'Sundays numbered after Pentecost are the Catholic count, not read '
-                          'yet (feastdate #7)')
-            refuse_unless(not ante and kind == 'easter'
-                          and EASTER_REL[key][1] == 0,
-                          'only Easter, Trinity and Epiphany number the Sundays after them')
-            refuse_unless(1 <= count <= EASTER_SUNDAYS, 'Sundays after Easter run 1 to %d, not %d'
-                          % (EASTER_SUNDAYS, count))
+            refuse_unless(not ante and kind == 'easter' and EASTER_REL[key][1] in (0, 49),
+                          'only Easter, Pentecost, Trinity and Epiphany number the Sundays '
+                          'after them')
+            if pent:
+                # The Catholic count: `Dom. 1. post Pent.` is Trinity Sunday, and the Sundays
+                # run up to Advent, 23 to 28 of them, one more than the Trinity count.
+                whit = easter_of(year, cal) + 49
+                last_pent = (_advent1(year, cal) - 1 - whit) // 7
+                refuse_unless(1 <= count <= last_pent, 'there were %d Sundays after Pentecost in '
+                              '%d, not %d' % (last_pent, year, count))
+            else:
+                refuse_unless(1 <= count <= EASTER_SUNDAYS, 'Sundays after Easter run 1 to %d, '
+                              'not %d' % (EASTER_SUNDAYS, count))
     if shift:
         refuse_unless(kind == 'easter' and not feria and not tag and n is None,
                       'a weekday after a feast needs a movable feast and no number')
@@ -584,7 +614,16 @@ def resolve(text, year=None, cal='P'):
         refuse_unless(EASTER_REL[key][1] % 7 == 0,
                       '"%s" counts from a Sunday feast' % words[shift[0]])
 
-    if kind == 'trin':
+    if ultimo:
+        o = _advent1(year, cal) - 7
+        what = 'last Sunday after %s' % ('Pentecost' if pent else 'Trinity')
+    elif kind == 'toten':
+        refuse_unless(year >= TOTEN_FROM, '%s was ordered in Prussia in %d; before it the Sunday '
+                      'is "Dom. ult. p. Trin."' % (words[min(found[(kind, key)])], TOTEN_FROM))
+        refuse_unless(n is None and not feria and not tag,
+                      'a number is not used by %s' % words[min(found[(kind, key)])])
+        o, what = _advent1(year, cal) - 7, 'Totensonntag, the last Sunday before Advent'
+    elif kind == 'trin':
         refuse_unless(not tag, '"Tag" does not count the Sundays after Trinity')
         base = easter_of(year, cal) + 56
         if n is None or feria:

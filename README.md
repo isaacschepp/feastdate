@@ -181,8 +181,17 @@ century, so no single rule gives it, and `feastdate` refuses it rather than gues
   after Trinity.
 * `Dom. 1. Adv.` to `Dom. 4. Adv.` give the Sundays of Advent, counted back from Christmas.
 * `Dom. 5. p. Epiph.` gives the *n*th Sunday after Epiphany. `Epiphany` alone gives 6 January.
+* `Dom. 5. post Pent.`, `Dominica 5. post Pentecosten` and `Dom. 5. nach Pfingsten` give the
+  *n*th Sunday after Pentecost, the count of Catholic registers and of Protestant ones before
+  the Trinity count took hold. `Dom. 1. post Pent.` is Trinity Sunday, so `Dom. 5. post Pent.`
+  is `Dom. 4. p. Trin.`. A year has 23 to 28 of them, one more than the Sundays after Trinity.
+* `Dom. ult. p. Trin.`, `Dom. ult. Trin.`, `letzter Sonntag nach Trinitatis` and
+  `Dom. ultima post Pent.` give the last Sunday after Trinity or Pentecost, a week before
+  Advent 1: in 1680, `Dom. 24. p. Trin.`.
+* `Totensonntag` and `Ewigkeitssonntag` are the same Sunday, but Prussia named it only in
+  1816, so `Totensonntag 1815` is refused. Before 1816, write `Dom. ult. p. Trin.`.
 * The count is checked against the year. The Sundays after Trinity run up to Advent, so a year
-  has 22 to 27 of them, and the Sundays after Epiphany run up to Septuagesima, 1 to 6. A
+  has 22 to 27 of them (23 to 28 counted after Pentecost), and the Sundays after Epiphany run up to Septuagesima, 1 to 6. A
   Sunday the year did not have is refused, not carried into Advent or Lent:
 
   ```console
@@ -220,9 +229,8 @@ Freitag nach Jubilate 1680 = Fri 7 May 1680 (Julian)   [Friday after jubilate]
   `Dom. ante Circumcis.`. Strictly after means that when Michaelmas is itself a Sunday, as
   in 1689, `Sonntag nach Michaelis` is the Sunday a week later.
 * `Dom. post Pascha` and `Dom. 1. post Pascha` are Quasimodogeniti, and `Dom. 2. p. Pasch.`
-  is Misericordias, up to `Dom. 6. post Pascha`. Easter, Trinity and Epiphany are the only
-  feasts whose Sundays are numbered. The Catholic count from Pentecost (`Dom. 3. post
-  Pent.`) is refused rather than read as an offset from Trinity.
+  is Misericordias, up to `Dom. 6. post Pascha`. Easter, Pentecost, Trinity and Epiphany
+  are the only feasts whose Sundays are numbered (see *Numbered Sundays* above).
 * The year is the feast's: `Dom. post Nativ. 1740` is Sunday 1 January 1741.
 * A weekday word after the feast still checks or moves the feast, so `Freitag nach
   Ostermontag` is the Friday after Easter Monday. One `nach` at a time: `Freitag nach Dom.
