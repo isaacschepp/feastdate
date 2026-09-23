@@ -2,8 +2,8 @@ import re
 
 import pytest
 
-from feastdate import (FE, SWITCH, FeastError, cal_of_year, easter, feast_date, fmt, j2o,
-                       resolve, show, to_ord)
+from feastdate import (FE, SWITCH, FeastError, cal_of_year, easter, easter_of, feast_date, fmt,
+                       j2o, resolve, show, to_ord)
 from feastdate.cli import main
 
 
@@ -438,3 +438,50 @@ def test_saints_days_refused(bad, why):
     with pytest.raises(FeastError) as e:
         resolve(bad)
     assert why.lower() in str(e.value).lower()
+
+
+# Ash Wednesday, Holy Saturday, Shrove Tuesday and Corpus Christi, in days from Easter.
+@pytest.mark.parametrize('text, off', [
+    ('Aschermittwoch', -46), ('Dies Cinerum', -46), ('Feria IV Cinerum', -46),
+    ('Ash Wednesday', -46),
+    ('Karsamstag', -1), ('Charsamstag', -1), ('Karsonnabend', -1), ('Ostersamstag', -1),
+    ('Ostersonnabend', -1), ('Oster Samstag', -1), ('Sabbatho Sancto', -1),
+    ('Sabbato sancto', -1), ('Holy Saturday', -1),
+    ('Fronleichnam', 60), ('Festo Corporis Christi', 60), ('Corpus Christi', 60),
+    ('Feria V Corporis Christi', 60),
+    ('Fastnachtsdienstag', -47), ('Fastnacht Dienstag', -47),
+    ('Fastnacht', -49),             # Estomihi, as before: the weekday is what moves it
+])
+@pytest.mark.parametrize('year, cal', [(1680, 'P'), (1724, 'P'), (1735, 'G')])
+def test_lent_and_corpus_christi(text, off, year, cal):
+    assert resolve(text, year, cal)[0] == easter_of(year, cal) + off
+
+
+@pytest.mark.parametrize('text, want', [
+    ('Aschermittwoch 1680', 'Wed 25 Feb 1680 (Julian)'),     # 1680 is a leap year
+    ('Sabbatho Sancto 1680', 'Sat 10 Apr 1680 (Julian)'),
+    ('Fronleichnam 1680', 'Thu 10 Jun 1680 (Julian)'),
+    ('Fastnachtsdienstag 1680', 'Tue 24 Feb 1680 (Julian)'),
+    ('Fronleichnam 1724', 'Thu 8 Jun 1724 (Gregorian)'),      # the Protestant Easter of 1724
+])
+def test_lent_and_corpus_christi_anchor(text, want):
+    assert feast_date(text) == want
+
+
+@pytest.mark.parametrize('bad, why', [
+    ('Ostersamstag 1680', None),                    # was Easter Sunday: must be the Saturday
+    ('Sabbatho 1680', 'no feast'),                  # half a two-word name
+    ('Corporis 1680', 'no feast'),
+    ('Fer. 3 Cinerum 1680', 'does not fall'),       # Ash Wednesday is feria 4
+    ('Dominica Cinerum 1680', 'wed'),               # a weekday word is a check
+    ('Karfreitag Montag 1680', 'from a sunday'),    # used to answer a Saturday
+    ('Aschermittwoch Dienstag 1680', 'from a sunday'),
+    ('Buss und Bettag 1680', 'no feast'),           # varied by territory: refused on purpose
+])
+def test_lent_and_corpus_christi_refused(bad, why):
+    if why is None:
+        assert resolve(bad)[0] == easter(1680) - 1
+        return
+    with pytest.raises(FeastError) as e:
+        resolve(bad)
+    assert why in str(e.value).lower()

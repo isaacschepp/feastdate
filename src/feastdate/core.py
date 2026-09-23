@@ -206,7 +206,8 @@ def show(o, cal):
 # ---------------------------------------------------------------------------------------
 # Parsing a feast name. Each entry is (prefixes, days from Easter Sunday). A token matches
 # when it STARTS WITH a prefix, so `Reminisc.`, `Reminisc:` and `Reminiscere` all land on
-# the same row. Longer, more specific prefixes come first.
+# the same row. Longer, more specific prefixes come first. A prefix with a space is a
+# two-word name, matched as described at FIXED.
 #
 # Every word of the text must be accounted for: a feast name, a number the feast uses, a
 # weekday that agrees with the answer, or one of the connecting words below. Anything else
@@ -217,6 +218,7 @@ EASTER_REL = [
     (('septuag',), -63),
     (('sexag',), -56),
     (('estomihi', 'esto', 'quinq', 'fastnacht'), -49),
+    (('aschermittw', 'cinerum', 'ash wednes'), -46),
     (('invoc',), -42),
     (('reminisc',), -35),
     (('oculi',), -28),
@@ -225,6 +227,10 @@ EASTER_REL = [
     (('palm',), -7),
     (('viridium', 'coena', 'cena', 'grundonnerstag', 'maundy'), -3),
     (('parasceve', 'karfreitag', 'charfreitag', 'good'), -2),
+    # Before the Easter row, which `oster` would otherwise take: `Ostersamstag` is the
+    # Saturday BEFORE Easter.
+    (('karsamstag', 'charsamstag', 'karsonnabend', 'charsonnabend', 'ostersamstag',
+      'ostersonnabend', 'oster samstag', 'oster sonnabend', 'sabbat sanct', 'holy sat'), -1),
     (('quasimod', 'quasi', 'quas', 'weisser'), 7),
     (('miseric', 'miser'), 14),
     (('jubil',), 21),
@@ -233,6 +239,8 @@ EASTER_REL = [
     (('ascens', 'himmelfahrt'), 39),
     (('exaudi',), 42),
     (('pentecost', 'pent', 'pfingst', 'whit'), 49),
+    # Catholic. Under 'P' it still resolves, to the same date.
+    (('fronleichnam', 'corp christi'), 60),
     (('pasch', 'ostern', 'oster', 'easter'), 0),
 ]
 TRIN = ('trinit', 'trin', 'dreifaltig')
@@ -402,22 +410,23 @@ def _feasts(words):
     # Two-word names first (`Mariae Verk.`, `Joh. Bapt.`, `Petri et Pauli`). The words they
     # take are not read again on their own, so `Nativ. Mariae` is not also Christmas.
     taken = set()
-    for k, (prefixes, _md) in enumerate(FIXED):
-        for p in prefixes:
-            if ' ' not in p:
-                continue
-            a, b = p.split(' ', 1)
-            for i, w in enumerate(words):
-                if not w.startswith(a):
+    for kind, table in (('easter', EASTER_REL), ('fixed', FIXED)):
+        for k, (prefixes, _when) in enumerate(table):
+            for p in prefixes:
+                if ' ' not in p:
                     continue
-                for j in range(i + 1, len(words)):
-                    if words[j].startswith(b):
-                        add(('fixed', k), i)
-                        add(('fixed', k), j)
-                        taken.update((i, j))
-                        break
-                    if not filler(words[j]):
-                        break
+                a, b = p.split(' ', 1)
+                for i, w in enumerate(words):
+                    if not w.startswith(a):
+                        continue
+                    for j in range(i + 1, len(words)):
+                        if words[j].startswith(b):
+                            add((kind, k), i)
+                            add((kind, k), j)
+                            taken.update((i, j))
+                            break
+                        if not filler(words[j]):
+                            break
 
     for i, w in enumerate(words):
         if i in taken:
@@ -430,7 +439,7 @@ def _feasts(words):
             add(('epiph', None), i)
         else:
             for k, (prefixes, _off) in enumerate(EASTER_REL):
-                if starts(w, prefixes):
+                if starts(w, [p for p in prefixes if ' ' not in p]):
                     add(('easter', k), i)
                     break
             else:
@@ -522,6 +531,10 @@ def resolve(text, year=None, cal='P'):
     if shift:
         refuse_unless(kind == 'easter' and not feria and not tag and n is None,
                       'a weekday after a feast needs a movable feast and no number')
+        # `Whit Monday` counts from a Sunday. After a weekday feast the count is nonsense:
+        # `Karfreitag Montag` would be a Saturday.
+        refuse_unless(EASTER_REL[key][1] % 7 == 0,
+                      '"%s" counts from a Sunday feast' % words[shift[0]])
 
     if kind == 'trin':
         refuse_unless(not tag, '"Tag" does not count the Sundays after Trinity')

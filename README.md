@@ -139,6 +139,8 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
 | Septuagesima | −63 | `septuag` |
 | Sexagesima | −56 | `sexag` |
 | Estomihi / Quinquagesima | −49 | `estomihi`, `esto`, `quinq`, `fastnacht` |
+| Shrove Tuesday | −47 | `fastnachtsdienstag`, `fastnacht dienstag` (Estomihi and a weekday, below) |
+| Ash Wednesday | −46 | `aschermittw`, `cinerum` (`Dies Cinerum`, `Feria IV Cinerum`), `ash wednes` |
 | Invocavit | −42 | `invoc` |
 | Reminiscere | −35 | `reminisc` |
 | Oculi | −28 | `oculi` |
@@ -147,6 +149,7 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
 | Palm Sunday | −7 | `palm` |
 | Maundy Thursday | −3 | `viridium`, `coena`, `cena`, `grundonnerstag`, `maundy` |
 | Good Friday | −2 | `parasceve`, `karfreitag`, `charfreitag`, `good` |
+| Holy Saturday | −1 | `karsamstag`, `charsamstag`, `karsonnabend`, `ostersamstag`, `ostersonnabend`, `oster samstag`, `sabbat sanct` (`Sabbatho Sancto`), `holy sat` |
 | Easter | 0 | `pasch`, `ostern`, `oster`, `easter` |
 | Quasimodogeniti | +7 | `quasimod`, `quasi`, `quas`, `weisser` |
 | Misericordias Domini | +14 | `miseric`, `miser` |
@@ -157,6 +160,19 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
 | Exaudi | +42 | `exaudi` |
 | Pentecost / Whitsun | +49 | `pentecost`, `pent`, `pfingst`, `whit` |
 | Trinity Sunday | +56 | `trinit`, `trin`, `dreifaltig` |
+| Corpus Christi | +60 | `fronleichnam`, `corp christi` (`Corporis Christi`, `Corpus Christi`) |
+
+A name of two words, such as `sabbat sanct`, matches the two words in order, with only
+connecting words between them (see *Fixed feasts* below).
+
+`Ostersamstag` and `Ostersonnabend` are the Saturday **before** Easter, not after it.
+
+**Corpus Christi is a Catholic feast.** It resolves under every calendar, the default
+included, because the date is the same. A Protestant register naming it is usually dating
+by a neighbouring Catholic parish's calendar, so consider `--gregorian`.
+
+**Buß- und Bettag is not recognised, on purpose.** Its date varied by territory and
+century, so no single rule gives it, and `feastdate` refuses it rather than guess.
 
 **Numbered Sundays** take an Arabic or Roman ordinal, with or without an ending
 (`9.`, `9th`, `IX`, `2da`):
@@ -179,7 +195,9 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
 * `Fer. 2. Pent.`, `Feria 2da Paschat.` and `Fer. 3. Pasch.` use the feria count, where 2 is
   Monday and 3 is Tuesday. A feria outside 1 to 7 is refused.
 * `Whit Monday`, `Easter Tuesday`, `Ostermontag` and `Pfingstdienstag` are also understood,
-  with the weekday written as part of the word or as a separate word.
+  with the weekday written as part of the word or as a separate word. The weekday counts
+  from a Sunday feast only: `Fastnachtsdienstag` is Estomihi plus two days, and
+  `Karfreitag Montag` is refused.
 * `Feria secunda`, `Fer. tertia` spell the number out; `prima` to `septima` are understood.
 * With a feast that is not a Sunday, the feria names that feast's own weekday, where 1 is
   Sunday: `Feria 6 in Parasceve` is Good Friday and `Feria V in Coena Domini` is Maundy
