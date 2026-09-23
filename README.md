@@ -47,6 +47,41 @@ $ feastdate --gregorian "Dom. 1. Adv. 1650"
 Dom. 1. Adv. 1650 = Sun 27 Nov 1650 (Gregorian)   [1. Sunday of Advent]
 ```
 
+### The reverse: what did the register call this day?
+
+An index gives `26 Jul 1657`, and you want to know whether the register's `Dom. 9. Trin.`
+agrees. `--date` names the day:
+
+```console
+$ feastdate --date 1657-07-26
+26 Jul 1657 (Julian) = Sun   Dom. 9. p. Trin. (9th Sunday after Trinity)
+
+$ feastdate --date 1724-04-06
+6 Apr 1724 (Gregorian) = Thu   Die Viridium (Maundy Thursday)
+
+$ feastdate --date 1680-04-14
+14 Apr 1680 (Julian) = Wed   Feria 4 post Pascha (Wednesday after Easter)
+
+$ feastdate --date 1656-11-30
+30 Nov 1656 (Julian) = Sun   Dom. 1. Adv. (1st Sunday of Advent); Andreae (St Andrew)
+
+$ feastdate --date 1657-07-28
+28 Jul 1657 (Julian) = Tue   no name of its own: the week of Dom. 9. p. Trin.
+```
+
+The date is read in the calendar in force on it, the same rule the forward direction uses:
+under the default, Julian before 1 Mar 1700, so `--date 1700-02-24` is refused as a day that
+never happened. `--gregorian` and `--julian` apply to the date as well.
+
+Every name printed is in a form `feastdate` reads back to the same day, followed by an English
+gloss. A day can have several names. Every Sunday has at least one, and so does every day from
+Septuagesima to the week of Trinity (a weekday there is a feria counted from its Sunday:
+`Feria 4 post Jubilate`). A weekday in the rest of the year has a name only if it is a saint's
+day; otherwise the output says which week it is in. That line is a description, not a register
+form: a feria is counted only from a Sunday without a number, so `Feria 3 post Dom. 9. p.
+Trin.` is not something `feastdate` reads. Corpus Christi and the Sundays after Pentecost are
+named under `--gregorian` only, and `Totensonntag` under the default from 1816.
+
 You can put the year in the text or give it as a separate argument. A year inside the text
 is recognised from 1500 to 1899, so that a number such as the `9` in `Dom. 9. Trin.` is read as
 an ordinal. Give any other year, from 100 to 9999, as a separate last argument: a shorter
@@ -61,11 +96,12 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | `--gregorian` | Gregorian throughout, for Catholic parishes |
 | `--julian` | Julian throughout |
 | `--easter YEAR` | Easter Sunday of that year |
+| `--date YYYY-MM-DD` | the reverse: the church-year names of that day |
 
 ## Python
 
 ```python
->>> from feastdate import feast_date, resolve, easter, fmt
+>>> from feastdate import feast_date, resolve, easter, fmt, name_of
 >>> feast_date("Dom. Lætare", 1680)
 'Sun 21 Mar 1680 (Julian)'
 >>> feast_date("Pasch.", 1744, cal="G")
@@ -74,12 +110,17 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 (2354905, 'whit + 1 day(s)')
 >>> fmt(easter(1656))
 '6 Apr 1656'
+>>> name_of(1656, 11, 30)                # the reverse lookup
+[('Dom. 1. Adv.', '1st Sunday of Advent'), ('Andreae', 'St Andrew')]
 ```
 
 | Function | Returns |
 | --- | --- |
 | `feast_date(text, year=None, cal='P')` | the formatted date, e.g. `'Sun 30 Mar 1656 (Julian)'` |
 | `resolve(text, year=None, cal='P')` | `(julian_day_number, description)`; raises `FeastError` |
+| `name_of(y, m, d, cal='P')` | every name of that day, `[(name, gloss), ...]`, movable days first; each one resolves back to the day |
+| `week_of(y, m, d, cal='P')` | `(weekday, name of the Sunday that begins its week)`, e.g. `('Tue', 'Dom. 9. p. Trin.')` |
+| `ymd(jdn, cal)` | a Julian Day Number as `(y, m, d)` in the calendar in force on that day |
 | `show(jdn, cal)` | a Julian Day Number formatted in the calendar in force on that day |
 | `easter(y)` | Easter Sunday as a Julian Day Number, by the Protestant German reckoning |
 | `easter_of(y, cal)` | Easter Sunday under `cal` (`'P'`, `'G'` or `'J'`) |
@@ -350,7 +391,9 @@ ordinals. The `year` argument accepts any year.
   German, and write ordinals in Roman or Arabic numerals with Latin endings.
 * **A hand-copied Easter routine drifts** without anything to show it. The test suite checks
   dates against days the registers themselves settle, and checks that every computed Sunday
-  in 1600–1799, in all three calendars, falls on a Sunday.
+  in 1600–1799, in all three calendars, falls on a Sunday. It also runs the reverse lookup
+  over every day of those two centuries and resolves each name it gives back to the same day,
+  so the two directions cannot drift apart.
 
 ## Development
 

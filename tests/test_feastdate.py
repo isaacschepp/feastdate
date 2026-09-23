@@ -3,7 +3,7 @@ import re
 import pytest
 
 from feastdate import (FE, SWITCH, FeastError, cal_of_year, easter, easter_of, feast_date, fmt,
-                       j2o, resolve, show, to_ord)
+                       j2o, name_of, resolve, show, to_ord, week_of, ymd)
 from feastdate.cli import main
 
 
@@ -636,3 +636,111 @@ def test_sundays_after_pentecost_refused(bad, why):
     with pytest.raises(FeastError) as e:
         resolve(bad)
     assert why in str(e.value).lower()
+
+
+# The reverse lookup (#8): a date -> the names the register gives it.
+@pytest.mark.parametrize('ymd_, cal, want', [
+    ((1657, 7, 26), 'P', [('Dom. 9. p. Trin.', '9th Sunday after Trinity')]),
+    ((1724, 4, 6), 'P', [('Die Viridium', 'Maundy Thursday')]),       # Protestant Easter 1724
+    ((1724, 4, 13), 'G', [('Die Viridium', 'Maundy Thursday')]),      # Gregorian Easter 1724
+    ((1680, 4, 14), 'P', [('Feria 4 post Pascha', 'Wednesday after Easter')]),
+    ((1656, 11, 30), 'P', [('Dom. 1. Adv.', '1st Sunday of Advent'), ('Andreae', 'St Andrew')]),
+    ((1680, 11, 21), 'P', [('Dom. 24. p. Trin.', '24th Sunday after Trinity'),
+                           ('Dom. ult. p. Trin.', 'last Sunday after Trinity')]),
+    # Matthias moves to 25 Feb in a leap year, and 1680 is one.
+    ((1680, 2, 25), 'P', [('Dies Cinerum', 'Ash Wednesday'), ('Matthiae', 'St Matthias')]),
+    ((1680, 2, 24), 'P', [('Feria 3 post Estomihi', 'Shrove Tuesday, Tuesday after Estomihi')]),
+    ((1656, 1, 13), 'P', [('Dom. 1. p. Epiph.', '1st Sunday after Epiphany')]),
+    ((1680, 12, 26), 'P', [('Dom. p. Nativ.', 'Sunday after Christmas'),
+                           ('Stephani', 'St Stephen, 2nd day of Christmas')]),
+    ((1657, 7, 28), 'P', []),                   # a Tuesday in Trinity season: no name
+    ((1680, 6, 20), 'G', [('Corpus Christi', 'Corpus Christi')]),
+    # The same Thursday under 'P' is a feria: Corpus Christi is named only under 'G'.
+    ((1680, 6, 10), 'P', [('Feria 5 post Trinitatis', 'Thursday after Trinity Sunday')]),
+    ((1817, 11, 23), 'P', [('Dom. 25. p. Trin.', '25th Sunday after Trinity'),
+                           ('Dom. ult. p. Trin.', 'last Sunday after Trinity'),
+                           ('Totensonntag', 'Sunday of the Dead, the last before Advent')]),
+])
+def test_name_of(ymd_, cal, want):
+    assert name_of(*ymd_, cal=cal) == want
+
+
+def test_name_of_counts_after_pentecost_only_under_gregorian():
+    assert name_of(1680, 7, 14, 'G') == [('Dom. 4. p. Trin.', '4th Sunday after Trinity'),
+                                         ('Dom. 5. p. Pent.', '5th Sunday after Pentecost')]
+    assert name_of(1680, 7, 4, 'P') == [('Dom. 4. p. Trin.', '4th Sunday after Trinity')]
+
+
+def test_name_of_refuses_a_day_that_never_was():
+    with pytest.raises(FeastError, match='does not exist'):
+        name_of(1700, 2, 24)
+    with pytest.raises(FeastError, match='does not exist'):
+        name_of(1680, 2, 30)
+
+
+def test_week_of():
+    assert week_of(1657, 7, 28) == ('Tue', 'Dom. 9. p. Trin.')
+    assert week_of(1657, 7, 26) == ('Sun', 'Dom. 9. p. Trin.')
+    # 1 Mar 1700, the first day of the Improved Calendar, follows Invocavit, 18 Feb (Julian).
+    assert week_of(1700, 3, 1) == ('Mon', 'Dom. Invocavit')
+    assert name_of(1700, 3, 1) == [('Feria 2 post Invocavit', 'Monday after Invocavit')]
+    assert name_of(1700, 2, 18) == [('Dom. Invocavit', 'Invocavit, 1st Sunday in Lent')]
+
+
+@pytest.mark.parametrize('cal', ['P', 'G', 'J'])
+def test_name_of_round_trips(cal):
+    """Every name for every day of 1600 to 1799 resolves back to that day, every Sunday has
+    a name, every day from Septuagesima to the week of Trinity has one, and so does every
+    fixed feast. This ties the two directions together: drift in either fails here."""
+    fixed = {'Circumcisio Domini', 'Epiphania Domini', 'Michaelis', 'Nativitas Christi',
+             'Matthiae', 'Andreae', 'Johannis Baptistae'}
+    for o in range(to_ord(1600, 1, 1, cal), to_ord(1800, 1, 1, cal)):
+        y, m, d = ymd(o, cal)
+        names = name_of(y, m, d, cal)
+        assert len({n for n, _g in names}) == len(names), (y, m, d, cal)
+        for name, _gloss in names:
+            assert resolve(name, y, cal)[0] == o, (name, y, m, d, cal)
+        if o % 7 == 6:
+            assert names, ('nameless Sunday', y, m, d, cal)
+        if -63 <= o - easter_of(y, cal) <= 62:
+            assert names, ('nameless day in the Easter cycle', y, m, d, cal)
+        fixed_here = fixed & {n for n, _g in names}
+        for name in fixed_here:
+            fixed_ok = True
+            assert fixed_ok
+    for y in range(1600, 1800):
+        for name in fixed:
+            try:
+                o = resolve(name, y, cal)[0]
+            except FeastError:
+                continue                        # Matthias 1700 under 'P' never happened
+            assert name in [n for n, _g in name_of(*ymd(o, cal), cal)], (name, y, cal)
+
+
+@pytest.mark.parametrize('argv, out', [
+    (['--date', '1657-07-26'], '26 Jul 1657 (Julian) = Sun   Dom. 9. p. Trin. (9th Sunday after Trinity)'),
+    (['--date', '1724-04-06'], '6 Apr 1724 (Gregorian) = Thu   Die Viridium (Maundy Thursday)'),
+    (['--date', '1680-04-14'], '14 Apr 1680 (Julian) = Wed   Feria 4 post Pascha (Wednesday after Easter)'),
+    (['--date', '1657-07-28'], '28 Jul 1657 (Julian) = Tue   no name of its own: the week of Dom. 9. p. Trin.'),
+    (['--gregorian', '--date', '1680-06-20'], '20 Jun 1680 (Gregorian) = Thu   Corpus Christi (Corpus Christi)'),
+])
+def test_date_cli(argv, out, capsys):
+    assert main(argv) == 0
+    assert capsys.readouterr().out.strip() == out
+
+
+@pytest.mark.parametrize('argv, err', [
+    (['--date', '1700-02-24'], 'does not exist in the Protestant calendar'),
+    (['--date', '1680-13-01'], 'no month 13'),
+])
+def test_date_cli_refused(argv, err, capsys):
+    assert main(argv) == 2
+    assert err in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('argv', [['--date', '17x'], ['--date', '1680-04-14', 'Pascha'],
+                                  ['--date', '1680-04-14', '--easter', '1680']])
+def test_date_cli_usage_errors(argv):
+    with pytest.raises(SystemExit) as e:
+        main(argv)
+    assert e.value.code == 2

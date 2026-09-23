@@ -19,7 +19,7 @@ import re
 __all__ = [
     'julian_easter', 'greg_easter', 'easter', 'easter_of',
     'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year', 'is_leap',
-    'fmt', 'show', 'resolve', 'feast_date', 'FeastError',
+    'fmt', 'show', 'resolve', 'feast_date', 'FeastError', 'name_of', 'week_of', 'ymd',
     'FE', 'MON', 'DAY', 'SWITCH',
 ]
 
@@ -705,3 +705,186 @@ def resolve(text, year=None, cal='P'):
 def feast_date(text, year=None, cal='P'):
     """``feast_date("Dom. Palm.", 1656)`` -> ``'Sun 30 Mar 1656 (Julian)'``."""
     return show(resolve(text, year, cal)[0], cal)
+
+
+# ---------------------------------------------------------------------------------------
+# The reverse lookup: a date -> the names a register gives that day.
+#
+# Every name below is written in a form resolve() reads back to the same day, and the test
+# suite checks that for every day of 1600 to 1799 in all three calendars. A name added here
+# that resolve() reads differently fails that test rather than drifting in silence.
+
+#: Movable days by offset from Easter Sunday: (canonical name, English gloss).
+REV_EASTER = {
+    -63: ('Dom. Septuagesimae', 'Septuagesima'),
+    -56: ('Dom. Sexagesimae', 'Sexagesima'),
+    -49: ('Dom. Estomihi', 'Estomihi, Quinquagesima'),
+    -46: ('Dies Cinerum', 'Ash Wednesday'),
+    -42: ('Dom. Invocavit', 'Invocavit, 1st Sunday in Lent'),
+    -35: ('Dom. Reminiscere', 'Reminiscere, 2nd Sunday in Lent'),
+    -28: ('Dom. Oculi', 'Oculi, 3rd Sunday in Lent'),
+    -21: ('Dom. Laetare', 'Laetare, 4th Sunday in Lent'),
+    -14: ('Dom. Judica', 'Judica, 5th Sunday in Lent'),
+    -7: ('Dom. Palmarum', 'Palm Sunday'),
+    -3: ('Die Viridium', 'Maundy Thursday'),
+    -2: ('Parasceve', 'Good Friday'),
+    -1: ('Sabbatum Sanctum', 'Holy Saturday'),
+    0: ('Pascha', 'Easter Sunday'),
+    1: ('Fer. 2. Pasch.', 'Easter Monday'),
+    2: ('Fer. 3. Pasch.', 'Easter Tuesday'),
+    7: ('Dom. Quasimodogeniti', 'Quasimodogeniti, 1st Sunday after Easter'),
+    14: ('Dom. Misericordias Domini', 'Misericordias Domini, 2nd Sunday after Easter'),
+    21: ('Dom. Jubilate', 'Jubilate, 3rd Sunday after Easter'),
+    28: ('Dom. Cantate', 'Cantate, 4th Sunday after Easter'),
+    35: ('Dom. Rogate', 'Rogate, 5th Sunday after Easter'),
+    39: ('Ascensio Domini', 'Ascension Day'),
+    42: ('Dom. Exaudi', 'Exaudi, Sunday after Ascension'),
+    49: ('Pentecoste', 'Whit Sunday'),
+    50: ('Fer. 2. Pent.', 'Whit Monday'),
+    51: ('Fer. 3. Pent.', 'Whit Tuesday'),
+    56: ('Dom. Trinitatis', 'Trinity Sunday'),
+}
+#: Corpus Christi is Catholic, so it is named only under ``'G'``.
+REV_CORPUS = (60, 'Corpus Christi', 'Corpus Christi')
+#: The Sundays a weekday is counted from, ``Feria 4 post Jubilate``, by offset from Easter.
+REV_POST = {-63: 'Septuagesimam', -56: 'Sexagesimam', -49: 'Estomihi', -42: 'Invocavit',
+            -35: 'Reminiscere', -28: 'Oculi', -21: 'Laetare', -14: 'Judica', -7: 'Palmarum',
+            0: 'Pascha', 7: 'Quasimodogeniti', 14: 'Misericordias Domini', 21: 'Jubilate',
+            28: 'Cantate', 35: 'Rogate', 42: 'Exaudi', 49: 'Pentecosten', 56: 'Trinitatis'}
+#: Weekdays with a name of their own that is still written as a feria.
+REV_WEEKDAY_GLOSS = {-47: 'Shrove Tuesday'}
+#: Fixed feasts by (month, day): (canonical name, English gloss). 24 Feb moves to 25 Feb in
+#: a leap year (LEAP_SHIFT), as resolve() moves it.
+REV_FIXED = {
+    (1, 1): ('Circumcisio Domini', 'New Year, the Circumcision'),
+    (1, 6): ('Epiphania Domini', 'Epiphany'),
+    (1, 25): ('Conversio Pauli', 'Conversion of St Paul'),
+    (2, 2): ('Purificatio Mariae', 'Candlemas'),
+    (2, 24): ('Matthiae', 'St Matthias'),
+    (3, 12): ('Gregorii', 'St Gregory'),
+    (3, 25): ('Annunciatio Mariae', 'Lady Day, the Annunciation'),
+    (4, 23): ('Georgii', 'St George'),
+    (5, 1): ('Philippi et Jacobi', 'SS Philip and James'),
+    (5, 3): ('Inventio Crucis', 'Finding of the Cross'),
+    (6, 24): ('Johannis Baptistae', 'St John the Baptist'),
+    (6, 29): ('Petri et Pauli', 'SS Peter and Paul'),
+    (7, 2): ('Visitatio Mariae', 'Visitation'),
+    (7, 22): ('Mariae Magdalenae', 'St Mary Magdalene'),
+    (7, 25): ('Jacobi', 'St James'),
+    (8, 10): ('Laurentii', 'St Lawrence'),
+    (8, 15): ('Assumptio Mariae', 'Assumption'),
+    (8, 24): ('Bartholomaei', 'St Bartholomew'),
+    (9, 8): ('Nativitas Mariae', 'Nativity of Mary'),
+    (9, 14): ('Exaltatio Crucis', 'Exaltation of the Cross'),
+    (9, 21): ('Matthaei', 'St Matthew'),
+    (9, 29): ('Michaelis', 'Michaelmas'),
+    (10, 16): ('Galli', 'St Gall'),
+    (10, 28): ('Simonis et Judae', 'SS Simon and Jude'),
+    (11, 1): ('Omnium Sanctorum', 'All Saints'),
+    (11, 2): ('Omnium Animarum', 'All Souls'),
+    (11, 11): ('Martini', 'Martinmas'),
+    (11, 19): ('Elisabethae', 'St Elizabeth'),
+    (11, 30): ('Andreae', 'St Andrew'),
+    (12, 21): ('Thomae', 'St Thomas'),
+    (12, 25): ('Nativitas Christi', 'Christmas Day'),
+    (12, 26): ('Stephani', 'St Stephen, 2nd day of Christmas'),
+    (12, 27): ('Johannis Evangelistae', 'St John the Evangelist'),
+    (12, 28): ('Innocentium', 'Holy Innocents'),
+}
+
+
+def _nth(n):
+    """1 -> '1st', 22 -> '22nd', 12 -> '12th'."""
+    suf = 'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return '%d%s' % (n, suf)
+
+
+def ymd(o, cal):
+    """An ordinal -> ``(y, m, d)`` in the calendar in force on that day, as :func:`show`."""
+    return o2g(o) if cal == 'G' or (cal == 'P' and o >= SWITCH) else o2j(o)
+
+
+def name_of(y, m, d, cal='P'):
+    """Every church-year name for a day: ``[(name, gloss), ...]``, movable days first.
+
+    The date is read in the calendar in force on it, as :func:`to_ord` reads it: under
+    ``'P'`` Julian before 1 Mar 1700. Each name resolves back to the same day with
+    :func:`resolve`, the same year and the same calendar::
+
+        >>> name_of(1657, 7, 26)
+        [('Dom. 9. p. Trin.', '9th Sunday after Trinity')]
+
+    A day can have several names (``Dom. 1. Adv.`` and ``Andreae``) or none: a weekday
+    outside the weeks from Septuagesima to Trinity is dated by the day of the month, and
+    has only its saint's day if it has one. :func:`week_of` says which week it is in.
+
+    Raises :class:`FeastError` for a day that does not exist in that calendar.
+    """
+    o = to_ord(y, m, d, cal)
+    wd = o % 7
+    e = easter_of(y, cal)
+    k = o - e
+    out = []
+
+    # The Easter cycle, Septuagesima to the week of Trinity.
+    if k in REV_EASTER:
+        out.append(REV_EASTER[k])
+    elif cal == 'G' and k == REV_CORPUS[0]:
+        out.append(REV_CORPUS[1:])
+    elif wd != 6 and k - (wd + 1) in REV_POST:
+        sun = REV_POST[k - (wd + 1)]
+        gloss = '%s after %s' % (FERIA_DAY[wd], REV_EASTER[k - (wd + 1)][1].split(',')[0]
+                                        .replace('Easter Sunday', 'Easter'))
+        if k in REV_WEEKDAY_GLOSS:
+            gloss = '%s, %s' % (REV_WEEKDAY_GLOSS[k], gloss)
+        out.append(('Feria %d post %s' % (wd + 2, sun), gloss))
+
+    if wd == 6:
+        adv1 = _advent1(y, cal)
+        trin = e + 56
+        if trin < o < adv1:
+            n = (o - trin) // 7
+            out.append(('Dom. %d. p. Trin.' % n, '%s Sunday after Trinity' % _nth(n)))
+            if cal == 'G':
+                out.append(('Dom. %d. p. Pent.' % (n + 1),
+                            '%s Sunday after Pentecost' % _nth(n + 1)))
+            if o == adv1 - 7:
+                out.append(('Dom. ult. p. Trin.', 'last Sunday after Trinity'))
+                if cal == 'G':
+                    out.append(('Dom. ult. p. Pent.', 'last Sunday after Pentecost'))
+                if cal == 'P' and y >= TOTEN_FROM:
+                    out.append(('Totensonntag', 'Sunday of the Dead, the last before Advent'))
+        elif adv1 <= o < adv1 + 28:
+            n = (o - adv1) // 7 + 1
+            out.append(('Dom. %d. Adv.' % n, '%s Sunday of Advent' % _nth(n)))
+        epi = to_ord(y, 1, 6, cal)
+        first = epi + 1 + ((6 - (epi + 1)) % 7)
+        if first <= o < e - 63:
+            n = (o - first) // 7 + 1
+            out.append(('Dom. %d. p. Epiph.' % n, '%s Sunday after Epiphany' % _nth(n)))
+        if m == 12 and d >= 26:
+            out.append(('Dom. p. Nativ.', 'Sunday after Christmas'))
+        if m == 1 and 2 <= d <= 5:
+            out.append(('Dom. p. Circumcis.', 'Sunday after New Year'))
+
+    # Fixed feasts. The leap shift is decided in the calendar in force on the feast.
+    for (fm, fd), named in REV_FIXED.items():
+        if LEAP_SHIFT[0] <= (fm, fd) <= LEAP_SHIFT[1] and is_leap(y, cal_of_year(y, cal, fm, fd)):
+            fd += 1
+        if (fm, fd) == (m, d):
+            out.append(named)
+            break
+    return out
+
+
+def week_of(y, m, d, cal='P'):
+    """``(weekday, name of the Sunday that begins the day's week)``.
+
+    ``week_of(1657, 7, 28)`` -> ``('Tue', 'Dom. 9. p. Trin.')``. A description, not a name
+    a register used: ``Feria 3 post Dom. 9. p. Trin.`` does not resolve, because a feria is
+    counted only from a Sunday that carries no number.
+    """
+    o = to_ord(y, m, d, cal)
+    sun = o - (o % 7 + 1) % 7
+    names = name_of(*ymd(sun, cal), cal)
+    return DAY[o % 7], (names[0][0] if names else None)
