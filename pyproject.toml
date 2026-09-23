@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "feastdate"
 version = "1.7.0"
 description = "Convert church-year feast names from old parish registers (Dom. Palm. 1656) into calendar dates, Julian or Gregorian."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "isaacschepp" }]
 requires-python = ">=3.9"
 dependencies = []
@@ -15,7 +16,6 @@ keywords = ["genealogy", "calendar", "easter", "parish registers", "julian", "gr
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Sociology :: Genealogy",
