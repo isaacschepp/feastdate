@@ -47,7 +47,9 @@ $ feastdate --gregorian "Dom. 1. Adv. 1650"
 Dom. 1. Adv. 1650 = Sun 27 Nov 1650 (Gregorian)   [1. Sunday of Advent]
 ```
 
-You can put the year in the text or give it as a separate argument. The bracketed part of
+You can put the year in the text or give it as a separate argument. A year inside the text
+is recognised from 1500 to 1899, so that a number such as the `9` in `Dom. 9. Trin.` is read as
+an ordinal. Give any other year, from 1 to 9999, as a separate last argument. The bracketed part of
 the output shows what the parser recognised, so you can check it read the entry the way you
 meant. If it recognises nothing, it prints an error and exits with status 2.
 
@@ -81,7 +83,7 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | `easter_of(y, cal)` | Easter Sunday under `cal` (`'P'`, `'G'` or `'J'`) |
 | `julian_easter(y)`, `greg_easter(y)` | `(month, day)` of Easter in that calendar |
 | `j2o`, `o2j`, `g2o`, `o2g` | Julian or Gregorian `(y, m, d)` to and from a Julian Day Number |
-| `fmt(jdn)` | `'30 Mar 1656'`: Julian before 1700, Gregorian from 1700 |
+| `fmt(jdn)` | `'30 Mar 1656'`: Julian before 1 Mar 1700, Gregorian from it |
 | `FE` | movable feasts as day offsets from Easter Sunday, e.g. `FE['Trinity'] == 56` |
 
 All dates are carried internally as Julian Day Numbers, so both calendars share one number

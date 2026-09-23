@@ -1,5 +1,6 @@
 """Command line: ``feastdate "Dom. Palm. 1656"`` -> ``Sun 30 Mar 1656 (Julian)``."""
 import argparse
+import re
 import sys
 
 from . import __version__
@@ -12,7 +13,22 @@ EPILOG = """examples:
   feastdate --easter 1744              Easter Sunday of that year
   feastdate --gregorian "Dom. 1. Adv. 1650"   a Catholic parish
 
-default calendar: Julian to 1699, the Protestant Improved Calendar from 1700."""
+default calendar: Julian to 1699, the Protestant Improved Calendar from 1700.
+a year inside the text is read only from 1500 to 1899; give any other year
+(1 to 9999) as the last argument."""
+
+YEAR_MIN, YEAR_MAX = 1, 9999
+
+
+def year_arg(s):
+    """argparse type for a year: the same range on every route into the calendar."""
+    try:
+        y = int(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError('not a year: %r' % s)
+    if not YEAR_MIN <= y <= YEAR_MAX:
+        raise argparse.ArgumentTypeError('year %d is outside %d to %d' % (y, YEAR_MIN, YEAR_MAX))
+    return y
 
 
 def build_parser():
@@ -26,7 +42,7 @@ def build_parser():
                      help='Gregorian throughout (Catholic parishes)')
     cal.add_argument('--julian', dest='cal', action='store_const', const='J',
                      help='Julian throughout')
-    p.add_argument('--easter', metavar='YEAR', type=int,
+    p.add_argument('--easter', metavar='YEAR', type=year_arg,
                    help='print Easter Sunday of YEAR')
     p.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     p.set_defaults(cal='P')
@@ -46,13 +62,23 @@ def main(argv=None):
     if not args.text:
         p.print_help()
         return 2
-    text = ' '.join(args.text)
+    words, year = list(args.text), None
+    # A separate trailing year is passed as the year, not left to resolve()'s in-text
+    # 1500-1899 window, so "feastdate 'Dom. 9. Trin.' 1950" works. Ordinals never reach
+    # three digits, so a three-digit-or-longer last word is always a year.
+    if len(words) > 1 and re.fullmatch(r'\d{3,}', words[-1].strip()):
+        try:
+            year = year_arg(words.pop())
+        except argparse.ArgumentTypeError as e:
+            p.error(str(e))
+    text = ' '.join(words)
     try:
-        o, what = resolve(text, None, args.cal)
+        o, what = resolve(text, year, args.cal)
     except FeastError as e:
         print('feastdate: %s' % e, file=sys.stderr)
         return 2
-    print('%s = %s   [%s]' % (text, show(o, args.cal), what))
+    label = text if year is None else '%s %d' % (text, year)
+    print('%s = %s   [%s]' % (label, show(o, args.cal), what))
     return 0
 
 

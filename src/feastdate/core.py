@@ -60,10 +60,8 @@ MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'No
 
 
 def fmt(o):
-    """``'30 Mar 1656'``: Julian before 1700, Gregorian from 1700 (no weekday, no label)."""
-    y, m, d = o2j(o)
-    if y >= 1700:
-        y, m, d = o2g(o)
+    """``'30 Mar 1656'``: Julian before 1 Mar 1700, Gregorian from it (no weekday, no label)."""
+    y, m, d = o2g(o) if o >= SWITCH else o2j(o)
     return f"{d} {MON[m-1]} {y}"
 
 
@@ -142,15 +140,26 @@ SWITCH = g2o(1700, 3, 1)    # the first Gregorian day in the Protestant estates
 
 
 def cal_of_year(y, cal):
-    """Which calendar a year's *fixed* dates (Christmas, Epiphany) are reckoned in."""
+    """Which calendar a year's *fixed* dates (Christmas, Epiphany) are mostly reckoned in.
+
+    Under ``'P'`` the year 1700 is split: its January and February (to 18 Feb) were still
+    Julian. :func:`to_ord` handles that; this answers for the year as a whole.
+    """
     if cal == 'P':
         return 'G' if y >= 1700 else 'J'
     return cal
 
 
 def to_ord(y, m, d, cal):
-    """A fixed date in year ``y`` -> ordinal, in the calendar in force that year."""
-    return g2o(y, m, d) if cal_of_year(y, cal) == 'G' else j2o(y, m, d)
+    """A fixed date -> ordinal, in the calendar in force on that day.
+
+    Under ``'P'`` that is decided by the day, not the year: Epiphany 1700 is Julian
+    6 Jan 1700, because the Improved Calendar began only on 1 Mar 1700.
+    """
+    if cal == 'P':
+        o = j2o(y, m, d)
+        return o if o < SWITCH else g2o(y, m, d)
+    return g2o(y, m, d) if cal == 'G' else j2o(y, m, d)
 
 
 def easter_of(y, cal):

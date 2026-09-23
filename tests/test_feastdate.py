@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from feastdate import FE, SWITCH, FeastError, easter, feast_date, resolve, show
+from feastdate import FE, SWITCH, FeastError, easter, feast_date, fmt, j2o, resolve, show
 from feastdate.cli import main
 
 
@@ -127,4 +127,40 @@ def test_cli_error(capsys):
 def test_cli_unknown_flag():
     with pytest.raises(SystemExit) as e:
         main(['--gregorain', 'Dom. Palm. 1656'])
+    assert e.value.code == 2
+
+
+@pytest.mark.parametrize('text, want', [
+    # 1 Jan to 18 Feb 1700 were still Julian in the Protestant estates.
+    ('Circumcis. 1700', 'Mon 1 Jan 1700 (Julian)'),
+    ('Epiph. 1700', 'Sat 6 Jan 1700 (Julian)'),
+    ('Dom. 1. p. Epiph. 1700', 'Sun 7 Jan 1700 (Julian)'),
+    ('Purif. 1700', 'Fri 2 Feb 1700 (Julian)'),
+    # From 1 Mar 1700 the Improved Calendar.
+    ('Annunc. 1700', 'Thu 25 Mar 1700 (Gregorian)'),
+    ('Nativ. 1700', 'Sat 25 Dec 1700 (Gregorian)'),
+])
+def test_fixed_feasts_in_1700(text, want):
+    assert feast_date(text) == want
+
+
+def test_fmt_across_the_switch():
+    assert fmt(SWITCH - 1) == '18 Feb 1700'
+    assert fmt(SWITCH) == '1 Mar 1700'
+    assert fmt(j2o(1700, 1, 6)) == '6 Jan 1700'
+
+
+def test_cli_separate_year_outside_the_text_window(capsys):
+    assert main(['Dom. 9. Trin.', '1950']) == 0
+    assert capsys.readouterr().out.startswith('Dom. 9. Trin. 1950 = Sun ')
+    assert main(['Dom. 9. Trin. 1657', '1657']) == 0
+    assert main(['Dom. 9. Trin. 1657', '1658']) == 2
+    assert 'two years' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('argv', [['--easter', '-5'], ['--easter', '0'], ['--easter', '10000'],
+                                  ['Dom. Palm.', '10000']])
+def test_cli_year_range_is_the_same_on_every_route(argv):
+    with pytest.raises(SystemExit) as e:
+        main(argv)
     assert e.value.code == 2
