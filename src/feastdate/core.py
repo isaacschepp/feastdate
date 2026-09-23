@@ -234,6 +234,7 @@ TRIN = ('trinit', 'trin', 'dreifaltig')
 ADV = ('advent', 'adv')
 EPIPH = ('epiph',)
 FERIA = ('feria', 'fer')
+FERIA_DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 # Weekday words English transcriptions use after a feast name: `Whit Monday`.
 WEEKDAY_WORDS = {'monday': 1, 'tuesday': 2, 'montag': 1, 'dienstag': 2}
 # Weekday words that only say which day the feast fell on. The answer must agree.
@@ -265,7 +266,8 @@ DAY_FEASTS = {('easter', next(k for k, (p, _o) in enumerate(EASTER_REL) if 'oste
 FEAST_DAYS = 3              # the most days any feast was kept; 'letzter' is the third
 # Ordinals written out. The register writes `der dritte Ostertag`, `Feria secunda`.
 ORD_WORDS = [(r'(?:erst|zweit|dritt|viert)(?:e|er|en|es|em)?', ('erst', 'zweit', 'dritt', 'viert')),
-             (r'(?:prim|secund|terti|quart)(?:a|o|ae|am|us|um|i)?', ('prim', 'secund', 'terti', 'quart')),
+             (r'(?:prim|secund|terti|quart|quint|sext|septim)(?:a|o|ae|am|us|um|i)?',
+              ('prim', 'secund', 'terti', 'quart', 'quint', 'sext', 'septim')),
              (r'(?:first|second|third|fourth)', ('first', 'second', 'third', 'fourth'))]
 LAST_RE = r'letzt(?:e|er|en|es|em)?'
 # Words that connect a feast name to the rest of the entry and add nothing to the date.
@@ -500,7 +502,13 @@ def resolve(text, year=None, cal='P'):
         extra = 0
         if feria:
             refuse_unless(kind == 'easter', 'feria counts from a movable feast')
-            extra = n - 1                           # feria 2 = Monday, 3 = Tuesday
+            if off % 7:
+                # A weekday feast: `Feria 6 in Parasceve` is Good Friday itself. The number
+                # names the feast's own weekday (feria 1 = Sunday), so it is a check.
+                refuse_unless((n - 2) % 7 == o % 7, 'feria %d does not fall on %s, a %s'
+                              % (n, hit, FERIA_DAY[o % 7]))
+            else:
+                extra = n - 1                       # feria 2 = Monday, 3 = Tuesday
         elif tag and n is not None:
             refuse_unless((kind, key) in DAY_FEASTS,
                           'only Ostertag, Pfingsttag and Weihnachtstag count their days')

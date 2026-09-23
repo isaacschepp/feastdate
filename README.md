@@ -179,7 +179,11 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
   Monday and 3 is Tuesday. A feria outside 1 to 7 is refused.
 * `Whit Monday`, `Easter Tuesday`, `Ostermontag` and `Pfingstdienstag` are also understood,
   with the weekday written as part of the word or as a separate word.
-* `Feria secunda`, `Fer. tertia` spell the number out; `prima` to `quarta` are understood.
+* `Feria secunda`, `Fer. tertia` spell the number out; `prima` to `septima` are understood.
+* With a feast that is not a Sunday, the feria names that feast's own weekday, where 1 is
+  Sunday: `Feria 6 in Parasceve` is Good Friday and `Feria V in Coena Domini` is Maundy
+  Thursday. Nothing is added to the date. The number is checked instead, so
+  `Fer. 2. Ascens.` is refused, because Ascension is a Thursday.
 
 **Days of a German feast:** Easter, Whitsun and Christmas were kept over several days, and
 German registers count them:
