@@ -18,4 +18,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[test]"
       - run: pytest -q
-      - run: feastdate "Dom. Palm. 1656"
+      - name: smoke-test the installed command
+        shell: bash
+        run: feastdate "Dom. Palm. 1656" | grep -F "= Sun 30 Mar 1656 (Julian)"
