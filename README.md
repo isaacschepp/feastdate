@@ -204,6 +204,30 @@ century, so no single rule gives it, and `feastdate` refuses it rather than gues
   Thursday. Nothing is added to the date. The number is checked instead, so
   `Fer. 2. Ascens.` is refused, because Ascension is a Thursday.
 
+**A day counted from a feast:** the day stands before `nach`, `post`, `p.` or `after`
+(or `vor`, `ante`, `before`), and the feast after it. The answer is the first such day
+strictly after the feast, or the last one strictly before it:
+
+```console
+$ feastdate "Freitag nach Jubilate 1680"
+Freitag nach Jubilate 1680 = Fri 7 May 1680 (Julian)   [Friday after jubilate]
+```
+
+* `Freitag nach Jubilate`, `Mittwoch nach Oculi`, `Montag nach Trinitatis` and
+  `Sonnabend vor Palmarum` name the weekday. `Feria 4 post Oculi` and `Fer. 6 p. Reminisc.`
+  name it by the feria, where 1 is Sunday.
+* `Dom.` names the Sunday: `Dom. p. Nativ.`, `Sonntag nach Michaelis`, `Dom. post Martini`,
+  `Dom. ante Circumcis.`. Strictly after means that when Michaelmas is itself a Sunday, as
+  in 1689, `Sonntag nach Michaelis` is the Sunday a week later.
+* `Dom. post Pascha` and `Dom. 1. post Pascha` are Quasimodogeniti, and `Dom. 2. p. Pasch.`
+  is Misericordias, up to `Dom. 6. post Pascha`. Easter, Trinity and Epiphany are the only
+  feasts whose Sundays are numbered. The Catholic count from Pentecost (`Dom. 3. post
+  Pent.`) is refused rather than read as an offset from Trinity.
+* The year is the feast's: `Dom. post Nativ. 1740` is Sunday 1 January 1741.
+* A weekday word after the feast still checks or moves the feast, so `Freitag nach
+  Ostermontag` is the Friday after Easter Monday. One `nach` at a time: `Freitag nach Dom.
+  post Oculi` is refused.
+
 **Days of a German feast:** Easter, Whitsun and Christmas were kept over several days, and
 German registers count them:
 
@@ -278,8 +302,9 @@ Under the default rules there was no St Matthias in 1700, since 18 February (Jul
 followed by 1 March, and `Matthiae 1700` is refused.
 
 **Nothing is skipped.** Every word and number in the text must be accounted for: a feast
-name, a number the feast uses, a weekday that agrees with the answer, or a connecting word
-(`Dom.`, `Festo`, `post`, `der`, `Domini` and the like). Anything else is an error, never
+name, a number the feast uses, a weekday that agrees with the answer, a day counted from
+the feast (`Freitag nach`), or a connecting word (`Dom.`, `Festo`, `der`, `Domini` and the
+like). Anything else is an error, never
 dropped, so the answer is not a plausible date that ignored part of what you typed:
 
 ```console
@@ -290,9 +315,9 @@ $ feastdate "Dom. Oculi = 4 March 1638"
 feastdate: unrecognised word in 'Dom. Oculi = 4 March 1638': march
 ```
 
-Pass the feast name alone, not the whole sentence around it. A weekday word is a check:
-`Good Friday` must fall on a Friday, and `Dominica Viridium` is refused, because Maundy
-Thursday is not a Sunday.
+Pass the feast name alone, not the whole sentence around it. A weekday word is a check,
+unless it stands before `nach` / `post` / `vor`: `Good Friday` must fall on a Friday, and
+`Dominica Viridium` is refused, because Maundy Thursday is not a Sunday.
 
 A year written in the text must fall between 1500 and 1899, so that other numbers are read as
 ordinals. The `year` argument accepts any year.

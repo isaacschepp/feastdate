@@ -328,8 +328,14 @@ FILLER = {'dom', 'dni', 'die', 'dies', 'festo', 'festum', 'fest', 'festi', 'feas
 # in `Johannis Evang.`, where the two-word name takes it first.
 FILLER_PREFIXES = ('domin', 'jucund', 'bapt', 'apost', 'evang', 'archang', 'martyr', 'virg',
                    'episc')
-# Words that belong to a numbered Sunday AFTER a feast: `Dom. 5. p. Epiph.`
+# A day counted from a feast: `Dom. 5. p. Epiph.`, `Freitag nach Jubilate`, `Dom. ante
+# Nativ.`. The day comes before the word and the feast after it.
 POST = {'post', 'p', 'after', 'nach'}
+ANTE = {'ante', 'vor', 'before'}
+# `Dom.` names the Sunday only in front of `post` / `ante`. Everywhere else it is filler.
+DOM = 'dom'
+# The most Sundays counted after Easter: `Dom. 6. post Pascha` is Exaudi.
+EASTER_SUNDAYS = 6
 # Latin and English ordinal endings, and the German ones: `2te`, `3ten`, `2t`.
 NUM_RE = r'(\d+)(?:st|nd|rd|th|da|ma|tia|ta|to|a|o|ten|ter|tes|tem|te|t|en|er|e)?'
 ROMAN = {'i': 1, 'v': 5, 'x': 10, 'l': 50}
@@ -456,7 +462,9 @@ def resolve(text, year=None, cal='P'):
     Any number from 1500 to 1899 in the text is taken as the year; other numbers, Arabic
     or Roman, are the ordinal (``Dom. 9. Trin.``, ``Dom XXIII post Trin.``, ``Fer. 2.``).
     An ordinal before a German feast day counts the day of the feast: ``2. Ostertag`` and
-    ``der dritte Pfingsttag`` are Easter Monday and Whit Tuesday.
+    ``der dritte Pfingsttag`` are Easter Monday and Whit Tuesday. A day named before
+    ``post`` / ``nach`` / ``vor`` / ``ante`` is counted from the feast after it, strictly:
+    ``Freitag nach Jubilate``, ``Dom. p. Nativ.``, ``Sonnabend vor Palmarum``.
 
     Raises :class:`FeastError` when nothing can be resolved, and when any word or number
     in the text is not accounted for, rather than resolve the rest and drop it.
@@ -495,7 +503,7 @@ def resolve(text, year=None, cal='P'):
         raise FeastError('more than one feast named in %r: %s' % (text, ', '.join(names)))
     feria = [i for i, w in enumerate(words) if starts(w, FERIA)
              and not any(i in ix for ix in found.values())]
-    post = [i for i, w in enumerate(words) if w in POST]
+    post = [i for i, w in enumerate(words) if w in POST or w in ANTE]
     tag = [i for i, w in enumerate(words) if w == 'tag']
     shift = [i for i, w in enumerate(words) if w in WEEKDAY_WORDS]
     check = [i for i, w in enumerate(words) if w in CHECK_WEEKDAY]
@@ -525,9 +533,49 @@ def resolve(text, year=None, cal='P'):
     if feria:
         refuse_unless(n is not None, 'feria needs its number (Fer. 2. Pent.)')
         refuse_unless(1 <= n <= 7, 'feria counts the days of the week, 1 to 7, not %d' % n)
+    # A day counted from the feast: the target day stands before `post` / `nach` / `vor`,
+    # the feast after it. A weekday word before the relation word is the TARGET, not a
+    # check; one after it still checks, or moves, the feast (`Freitag nach Ostermontag`).
+    target, count, ante, numbered = None, None, False, False
+    if len(post) > 1:
+        raise FeastError('more than one of %s in %r: one day counted from one feast'
+                         % (', '.join('"%s"' % words[i] for i in post), text))
     if post:
-        refuse_unless(kind in ('trin', 'epiph') and n is not None and not feria,
-                      '"%s" belongs to a numbered Sunday after Trinity or Epiphany' % words[post[0]])
+        r = post[0]
+        rel, ante = words[r], words[r] in ANTE
+        refuse_unless(min(found[(kind, key)]) > r, 'the feast goes after "%s"' % rel)
+        refuse_unless(all(i < r for i in feria), 'the feria goes before "%s"' % rel)
+        days = {CHECK_WEEKDAY[words[i]] for i in check if i < r}
+        days |= {WEEKDAY_WORDS[words[i]] - 1 for i in shift if i < r}
+        if feria:
+            days.add((n - 2) % 7)                   # feria 1 = Sunday, 2 = Monday
+        if not days and DOM in words[:r]:
+            days = {6}
+        refuse_unless(len(days) <= 1, 'two different days named before "%s"' % rel)
+        target = days.pop() if days else None
+        check = [i for i in check if i > r]
+        shift = [i for i in shift if i > r]
+        # `Dom. 5. p. Epiph.`, `Dom XXIII post Trin.`: the numbered Sundays, counted below.
+        numbered = (kind in ('trin', 'epiph') and n is not None and not ante and not feria
+                    and target in (None, 6))
+        if not numbered:
+            refuse_unless(target is not None, '"%s" needs the day it counts: Dom., Freitag, '
+                          'Feria 6' % rel)
+            if feria:
+                feria, n = [], None                 # the number was the feria's
+            elif kind != 'adv' and not tag:
+                count, n = n, None                  # `Dom. 2. p. Pasch.`: the 2nd Sunday
+        if count is not None:
+            refuse_unless(target == 6, 'a number before "%s" counts Sundays, not %ss'
+                          % (rel, FERIA_DAY[target]))
+            refuse_unless(not (kind == 'easter' and EASTER_REL[key][1] == 49),
+                          'Sundays numbered after Pentecost are the Catholic count, not read '
+                          'yet (feastdate #7)')
+            refuse_unless(not ante and kind == 'easter'
+                          and EASTER_REL[key][1] == 0,
+                          'only Easter, Trinity and Epiphany number the Sundays after them')
+            refuse_unless(1 <= count <= EASTER_SUNDAYS, 'Sundays after Easter run 1 to %d, not %d'
+                          % (EASTER_SUNDAYS, count))
     if shift:
         refuse_unless(kind == 'easter' and not feria and not tag and n is None,
                       'a weekday after a feast needs a movable feast and no number')
@@ -603,6 +651,15 @@ def resolve(text, year=None, cal='P'):
     for i in check:
         want = CHECK_WEEKDAY[words[i]]
         refuse_unless(o % 7 == want, '"%s", but %s is a %s' % (words[i], show(o, cal), DAY[o % 7]))
+    if target is not None and not numbered:
+        # Strictly after, or strictly before: the Sunday after Michaelmas, when 29 Sep is
+        # itself a Sunday, is 6 Oct, as with the first Sunday after Epiphany.
+        if ante:
+            o -= 1 + (o - 1 - target) % 7
+        else:
+            o += 1 + (target - o - 1) % 7 + 7 * ((count or 1) - 1)
+        what = '%s%s %s %s' % ('%d. ' % count if count else '', FERIA_DAY[target],
+                               'before' if ante else 'after', what)
     return o, what
 
 

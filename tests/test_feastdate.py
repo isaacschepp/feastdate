@@ -305,8 +305,6 @@ def test_day_of_the_feast(text, want):
     ('2. Pfingsten 1740', 'not used'),
     ('2. Weihnachten 1740', 'not used'),
     ('2. Palm. 1740', 'not used'),
-    ('Dom. 2. post Pascha 1740', 'post'),           # the Sunday after Easter is not built
-    ('Dom. post Nativ. 1740', 'post'),
     ('4. Ostertag 1740', 'at most'),
     ('2. Palmtag 1740', 'not used'),
     ('2. Johannistag 1740', 'not used'),
@@ -485,3 +483,92 @@ def test_lent_and_corpus_christi_refused(bad, why):
     with pytest.raises(FeastError) as e:
         resolve(bad)
     assert why in str(e.value).lower()
+
+
+# A day counted from a feast (#6): the day before `nach` / `post` / `vor` / `ante`, the
+# feast after it, and the count strictly after or before. Easter 1680 (Julian) is 11 Apr.
+@pytest.mark.parametrize('text, want, what', [
+    ('Freitag nach Jubilate 1680', 'Fri 7 May 1680 (Julian)', 'Friday after jubilate'),
+    ('Friday after Jubilate 1680', 'Fri 7 May 1680 (Julian)', 'Friday after jubilate'),
+    ('Mittwoch nach Oculi 1680', 'Wed 17 Mar 1680 (Julian)', 'Wednesday after oculi'),
+    ('Montag nach Trinitatis 1680', 'Mon 7 Jun 1680 (Julian)', 'Monday after Trinity Sunday'),
+    ('Sonnabend vor Palmarum 1680', 'Sat 3 Apr 1680 (Julian)', 'Saturday before palmarum'),
+    ('Donnerstag vor Pfingsten 1680', 'Thu 27 May 1680 (Julian)', 'Thursday before pfingsten'),
+    ('Feria 4 post Oculi 1680', 'Wed 17 Mar 1680 (Julian)', 'Wednesday after oculi'),
+    ('Fer. 6 p. Reminisc. 1680', 'Fri 12 Mar 1680 (Julian)', 'Friday after reminisc'),
+    ('Freitag nach Himmelfahrt 1680', 'Fri 21 May 1680 (Julian)', 'Friday after himmelfahrt'),
+    # After the feast's own weekday word: the Friday after Easter Monday.
+    ('Freitag nach Ostermontag 1680', 'Fri 16 Apr 1680 (Julian)', None),
+    ('Mittwoch nach dem 3. Advent 1680', 'Wed 15 Dec 1680 (Julian)', None),
+    ('Mittwoch nach dem 2. Pfingsttag 1680', 'Wed 2 Jun 1680 (Julian)', None),
+    ('Dom. p. Nativ. 1680', 'Sun 26 Dec 1680 (Julian)', 'Sunday after fixed feast 25 Dec'),
+    ('Sonntag nach Michaelis 1680', 'Sun 3 Oct 1680 (Julian)', None),
+    ('Dom. post Circumcis. 1680', 'Sun 4 Jan 1680 (Julian)', None),
+    ('Dom. post Martini 1680', 'Sun 14 Nov 1680 (Julian)', None),
+    ('Dom. post Pascha 1680', 'Sun 18 Apr 1680 (Julian)', 'Sunday after pascha'),
+    ('Dom. 1. post Pascha 1680', 'Sun 18 Apr 1680 (Julian)', '1. Sunday after pascha'),
+    ('Dom. 2. p. Pasch. 1680', 'Sun 25 Apr 1680 (Julian)', '2. Sunday after pasch'),
+    ('Dom. ante Circumcis. 1681', 'Sun 26 Dec 1680 (Julian)', None),
+    # Strictly after: 29 Sep 1689 was itself a Sunday.
+    ('Sonntag nach Michaelis 1689', 'Sun 6 Oct 1689 (Julian)', None),
+    # The year is the feast's; the day counted from it can fall in the next.
+    ('Dom. post Nativ. 1740', 'Sun 1 Jan 1741 (Gregorian)', None),
+])
+def test_day_counted_from_a_feast(text, want, what):
+    assert feast_date(text) == want
+    if what:
+        assert resolve(text)[1] == what
+
+
+@pytest.mark.parametrize('cal', ['P', 'G', 'J'])
+def test_day_counted_from_a_feast_agrees_with_the_named_sundays(cal):
+    for yr in range(1600, 1800):
+        e = easter_of(yr, cal)
+        assert resolve('Dom. post Pascha', yr, cal)[0] == e + 7
+        for n in range(1, 7):
+            assert resolve('Dom. %d. post Pascha' % n, yr, cal)[0] == e + 7 * n
+        assert resolve('Dom. post Trin.', yr, cal)[0] == resolve('Dom. 1. Trin.', yr, cal)[0]
+        assert resolve('Dom. post Epiph.', yr, cal)[0] == resolve('Dom. 1. p. Epiph.', yr, cal)[0]
+        assert resolve('Dom. ante Nativ.', yr, cal)[0] == resolve('Dom. 4. Adv.', yr, cal)[0]
+        assert resolve('Dom. post Pent.', yr, cal)[0] == resolve('Trinitatis', yr, cal)[0]
+        for name in ('Martini', 'Michaelis', 'Johannis'):
+            f = resolve(name, yr, cal)[0]
+            after = resolve('Dom. post ' + name, yr, cal)[0]
+            before = resolve('Dom. ante ' + name, yr, cal)[0]
+            assert after % 7 == before % 7 == 6
+            assert f < after <= f + 7 and f - 7 <= before < f
+
+
+@pytest.mark.parametrize('bad, why', [
+    ('post Martini 1680', 'needs the day it counts'),
+    ('Jubilate nach Freitag 1680', 'the feast goes after'),
+    ('Freitag Sonntag nach Jubilate 1680', 'two different days'),
+    ('Feria 4 Freitag post Oculi 1680', 'two different days'),
+    ('Freitag nach Dom. post Oculi 1680', 'more than one of'),
+    ('2. Freitag nach Jubilate 1680', 'counts sundays, not fridays'),
+    ('Dom. 2. post Martini 1680', 'only easter, trinity and epiphany'),
+    ('Dom. 2. ante Pascha 1680', 'only easter, trinity and epiphany'),
+    ('Dom. 7. post Pascha 1680', 'run 1 to 6, not 7'),
+    # The Catholic count from Pentecost is its own issue, not an offset from Trinity.
+    ('Dom. 2. post Pent. 1680', 'catholic count'),
+    ('Freitag nach Karfreitag Montag 1680', 'from a sunday'),
+    ('Dom. post Jubilate Freitag 1680', 'is a sun'),   # a weekday after the feast checks it
+    ('Freitag nach 1680', 'no feast'),
+])
+def test_day_counted_from_a_feast_refused(bad, why):
+    with pytest.raises(FeastError) as e:
+        resolve(bad)
+    assert why in str(e.value).lower()
+
+
+def test_weekday_without_nach_is_still_a_check():
+    with pytest.raises(FeastError, match='is a Thu'):
+        resolve('Dominica Viridium 1680')
+    with pytest.raises(FeastError, match='is a Sun'):
+        resolve('Freitag Jubilate 1680')
+
+
+def test_day_counted_from_a_feast_cli(capsys):
+    assert main(['Freitag nach Jubilate 1680']) == 0
+    assert capsys.readouterr().out == ('Freitag nach Jubilate 1680 = Fri 7 May 1680 (Julian)'
+                                       '   [Friday after jubilate]\n')
