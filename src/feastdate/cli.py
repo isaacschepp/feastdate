@@ -77,7 +77,11 @@ def main(argv=None):
     except FeastError as e:
         print('feastdate: %s' % e, file=sys.stderr)
         return 2
-    label = text if year is None else '%s %d' % (text, year)
+    # The year the text already carries (resolve() refused any other) is not repeated.
+    if year is None or re.search(r'(?<!\d)%d(?!\d)' % year, text):
+        label = text
+    else:
+        label = '%s %d' % (text, year)
     print('%s = %s   [%s]' % (label, show(o, args.cal), what))
     return 0
 

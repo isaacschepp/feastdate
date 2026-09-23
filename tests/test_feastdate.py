@@ -76,15 +76,16 @@ def test_the_1700_switch():
 
 
 @pytest.mark.parametrize('bad, why', [
-    ('Dom. Palm.', 'no year'),
-    ('Dom XV post 1656', 'post'),
-    ('Dom. 1656', 'no feast'),
-    ('Dom. 5. Adv. 1656', 'Advent'),
+    ('Dom. Palm.', '^no year: '),
+    ('Dom XV post 1656', '^"post" with no feast named'),
+    ('Dom. 1656', '^no feast recognised in '),
+    ('Dom. 5. Adv. 1656', '^Advent needs its Sunday'),
 ])
 def test_refused(bad, why):
-    with pytest.raises(FeastError) as e:
+    # Anchored on each branch's own wording: the catch-all quotes the input back, so a
+    # bare word from the input ("post") would match it and pass with the branch gone.
+    with pytest.raises(FeastError, match=why):
         resolve(bad)
-    assert why.split()[-1] in str(e.value)
 
 
 @pytest.mark.parametrize('text, name', [
@@ -155,6 +156,7 @@ def test_cli_separate_year_outside_the_text_window(capsys):
     assert main(['Dom. 9. Trin.', '1950']) == 0
     assert capsys.readouterr().out.startswith('Dom. 9. Trin. 1950 = Sun ')
     assert main(['Dom. 9. Trin. 1657', '1657']) == 0
+    assert capsys.readouterr().out.startswith('Dom. 9. Trin. 1657 = Sun ')
     assert main(['Dom. 9. Trin. 1657', '1658']) == 2
     assert 'two years' in capsys.readouterr().err
 
