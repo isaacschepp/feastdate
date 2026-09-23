@@ -1,3 +1,5 @@
+import io
+import json
 import re
 
 import pytest
@@ -744,3 +746,88 @@ def test_date_cli_usage_errors(argv):
     with pytest.raises(SystemExit) as e:
         main(argv)
     assert e.value.code == 2
+
+
+# --- Machine-readable output and batch input (#9) ---------------------------------------
+
+
+def test_iso_output(capsys):
+    assert main(['--iso', 'Dom. Palm. 1656']) == 0
+    assert capsys.readouterr().out == '1656-03-30 J\n'
+    assert main(['--iso', 'Die Viridium 1724']) == 0
+    assert capsys.readouterr().out == '1724-04-06 G\n'
+    assert main(['--iso', '--easter', '1744']) == 0
+    assert capsys.readouterr().out == '1744-03-29 G\n'
+
+
+def test_json_round_trip_success(capsys):
+    assert main(['--json', 'Dom. 9. Trin.', '1657']) == 0
+    got = json.loads(capsys.readouterr().out)
+    o, what = resolve('Dom. 9. Trin.', 1657)
+    assert got == {'input': 'Dom. 9. Trin. 1657', 'date': '1657-07-26', 'calendar': 'Julian',
+                   'weekday': 'Sun', 'jdn': o, 'parsed': what}
+    assert show(got['jdn'], 'P') == 'Sun 26 Jul 1657 (Julian)'
+
+
+def test_json_round_trip_refusal(capsys):
+    assert main(['--json', 'Festo Blödsinn 1700']) == 2
+    out = capsys.readouterr().out
+    got = json.loads(out)
+    assert set(got) == {'input', 'error'}
+    assert got['input'] == 'Festo Blödsinn 1700' and 'no feast recognised' in got['error']
+    assert 'Blödsinn' in out                    # not \u-escaped
+
+
+def test_json_date(capsys):
+    assert main(['--json', '--date', '1656-11-30']) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got['calendar'] == 'Julian' and got['weekday'] == 'Sun'
+    assert [n['name'] for n in got['names']] == ['Dom. 1. Adv.', 'Andreae']
+
+
+def test_iso_with_date_is_a_usage_error():
+    with pytest.raises(SystemExit) as e:
+        main(['--iso', '--date', '1656-11-30'])
+    assert e.value.code == 2
+
+
+@pytest.mark.parametrize('fmt', [[], ['--iso'], ['--json']])
+def test_batch_keeps_going_past_a_refusal(fmt, monkeypatch, capsys):
+    monkeypatch.setattr('sys.stdin', io.StringIO('Dom. Palm. 1656\nDom. Palm.\nDom. 9. Trin.\t1950\n'))
+    assert main(fmt + ['-']) == 2
+    cap = capsys.readouterr()
+    lines = cap.out.splitlines()
+    assert len(lines) == 3
+    assert 'line 2: no year' in cap.err
+    if fmt == ['--json']:
+        rows = [json.loads(ln) for ln in lines]
+        assert [r.get('date') for r in rows] == ['1656-03-30', None, '1950-08-06']
+        assert 'error' in rows[1]
+    elif fmt == ['--iso']:
+        assert lines == ['1656-03-30 J', 'error: no year: give one, e.g. "Dom. Palm. 1656"',
+                         '1950-08-06 G']
+    else:
+        assert lines[0] == 'Dom. Palm. 1656 = Sun 30 Mar 1656 (Julian)   [palm]'
+        assert lines[2].startswith('Dom. 9. Trin. 1950 = Sun 6 Aug 1950 (Gregorian)')
+
+
+def test_batch_all_resolved_exits_0(monkeypatch, capsys):
+    monkeypatch.setattr('sys.stdin', io.StringIO('Dom. Palm. 1656\r\nFesto Michaelis 1699\r\n'))
+    assert main(['--iso']) == 0                 # no text, stdin not a terminal
+    assert capsys.readouterr().out == '1656-03-30 J\n1699-09-29 J\n'
+
+
+def test_batch_bad_year_column_and_empty_line(monkeypatch, capsys):
+    monkeypatch.setattr('sys.stdin', io.StringIO('Dom. Palm.\t10000\n\n'))
+    assert main(['--iso', '-']) == 2
+    assert capsys.readouterr().out.splitlines() == [
+        'error: year 10000 is outside 1 to 9999', 'error: empty line']
+
+
+def test_no_text_on_a_terminal_still_prints_help(monkeypatch, capsys):
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+    monkeypatch.setattr('sys.stdin', Tty(''))
+    assert main([]) == 2
+    assert 'usage:' in capsys.readouterr().out

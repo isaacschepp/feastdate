@@ -97,6 +97,45 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | `--julian` | Julian throughout |
 | `--easter YEAR` | Easter Sunday of that year |
 | `--date YYYY-MM-DD` | the reverse: the church-year names of that day |
+| `--iso` | only the date and calendar letter: `1656-03-30 J` |
+| `--json` | one JSON object per entry |
+| `-` | read one entry per line from stdin |
+
+### Many entries at once, and output for scripts
+
+`--iso` prints only the date, as `YYYY-MM-DD` followed by `J` (Julian) or `G` (Gregorian).
+`--json` prints one object per entry. A refusal is an object with an `error` key instead,
+and the exit status is still 2:
+
+```console
+$ feastdate --iso "Dom. Palm. 1656"
+1656-03-30 J
+
+$ feastdate --json "Dom. Palm. 1656"
+{"input": "Dom. Palm. 1656", "date": "1656-03-30", "calendar": "Julian", "weekday": "Sun", "jdn": 2326001, "parsed": "palm"}
+
+$ feastdate --json "Dom. Palm."
+{"input": "Dom. Palm.", "error": "no year: give one, e.g. \"Dom. Palm. 1656\""}
+```
+
+`jdn` is the Julian Day Number, the same day whichever calendar printed it. `--json` works
+with `--easter` and with `--date`, which gives the names as a list of `name` and `gloss` pairs.
+
+To convert a whole extraction, give `-` as the text, or no text with stdin redirected, and
+put one entry on each line. If the year is kept in its own column, put it after a tab. Every
+input line gives one output line, including a refused line, so the output lines up with the
+input. Each refusal is also reported on stderr with its line number. The exit status is 0 only
+if every line resolved, and 2 otherwise:
+
+```console
+$ printf 'Dom. Palm. 1656\nDom. Palm.\nDom. 9. Trin.\t1950\n' | feastdate --iso -
+1656-03-30 J
+feastdate: line 2: no year: give one, e.g. "Dom. Palm. 1656"
+error: no year: give one, e.g. "Dom. Palm. 1656"
+1950-08-06 G
+```
+
+The default single-entry output line has not changed.
 
 ## Python
 

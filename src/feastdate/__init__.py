@@ -10,7 +10,7 @@ from .core import (  # noqa: F401
     week_of, ymd,
 )
 
-__version__ = '1.5.0'
+__version__ = '1.6.0'
 
 __all__ = [
     'feast_date', 'resolve', 'show', 'FeastError', 'name_of', 'week_of', 'ymd',
