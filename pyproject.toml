@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "feastdate"
+version = "1.0.0"
+description = "Convert church-year feast names from old parish registers (Dom. Palm. 1656) into calendar dates, Julian or Gregorian."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "isaacschepp" }]
+requires-python = ">=3.9"
+dependencies = []
+keywords = ["genealogy", "calendar", "easter", "parish registers", "julian", "gregorian", "liturgical"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Sociology :: Genealogy",
+    "Topic :: Sociology :: History",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+feastdate = "feastdate.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/isaacschepp/feastdate"
+Issues = "https://github.com/isaacschepp/feastdate/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
