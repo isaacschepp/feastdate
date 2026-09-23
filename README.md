@@ -20,6 +20,12 @@ It is pure Python, uses only the standard library, and runs on Python 3.9 or lat
 ## Install
 
 ```console
+pip install feastdate
+```
+
+Or the latest `main` straight from GitHub:
+
+```console
 pip install git+https://github.com/isaacschepp/feastdate
 ```
 
@@ -522,4 +528,4 @@ pytest
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/isaacschepp/feastdate/blob/main/LICENSE).
