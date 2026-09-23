@@ -45,6 +45,9 @@ Easter 1744 = Sun 5 Apr 1744 (Gregorian)
 
 $ feastdate --gregorian "Dom. 1. Adv. 1650"
 Dom. 1. Adv. 1650 = Sun 27 Nov 1650 (Gregorian)   [1. Sunday of Advent]
+
+$ feastdate --switch england "Michaelis 1752"
+Michaelis 1752 = Fri 29 Sep 1752 (Gregorian)   [fixed feast 29 Sep]
 ```
 
 ### The reverse: what did the register call this day?
@@ -71,7 +74,7 @@ $ feastdate --date 1657-07-28
 
 The date is read in the calendar in force on it, the same rule the forward direction uses:
 under the default, Julian before 1 Mar 1700, so `--date 1700-02-24` is refused as a day that
-never happened. `--gregorian` and `--julian` apply to the date as well.
+never happened. `--gregorian`, `--julian` and `--switch` apply to the date as well.
 
 Every name printed is in a form `feastdate` reads back to the same day, followed by an English
 gloss. A day can have several names. Every Sunday has at least one, and so does every day from
@@ -80,7 +83,8 @@ Septuagesima to the week of Trinity (a weekday there is a feria counted from its
 day; otherwise the output says which week it is in. That line is a description, not a register
 form: a feria is counted only from a Sunday without a number, so `Feria 3 post Dom. 9. p.
 Trin.` is not something `feastdate` reads. Corpus Christi and the Sundays after Pentecost are
-named under `--gregorian` only, and `Totensonntag` under the default from 1816.
+named under `--gregorian` and `--switch catholic` only, and `Totensonntag` under the default
+(and `--switch prussia-duchy`) from 1816.
 
 You can put the year in the text or give it as a separate argument. A year inside the text
 is recognised from 1500 to 1899, so that a number such as the `9` in `Dom. 9. Trin.` is read as
@@ -95,6 +99,7 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | *(none)* | Protestant German calendar (see below) |
 | `--gregorian` | Gregorian throughout, for Catholic parishes |
 | `--julian` | Julian throughout |
+| `--switch TERRITORY` | another territory's switch: `england`, `sweden`, ... or `LAST:FIRST` (see below) |
 | `--easter YEAR` | Easter Sunday of that year |
 | `--date YYYY-MM-DD` | the reverse: the church-year names of that day |
 | `--iso` | only the date and calendar letter: `1656-03-30 J` |
@@ -162,7 +167,10 @@ The default single-entry output line has not changed.
 | `ymd(jdn, cal)` | a Julian Day Number as `(y, m, d)` in the calendar in force on that day |
 | `show(jdn, cal)` | a Julian Day Number formatted in the calendar in force on that day |
 | `easter(y)` | Easter Sunday as a Julian Day Number, by the Protestant German reckoning |
-| `easter_of(y, cal)` | Easter Sunday under `cal` (`'P'`, `'G'` or `'J'`) |
+| `easter_of(y, cal)` | Easter Sunday under `cal` (`'P'`, `'G'`, `'J'` or a switch) |
+| `calendar_of(cal)` | `cal` as the module takes it: `'G'`, `'J'` or a `Switch`; raises `FeastError` for an unknown name or a pair of days that are not consecutive |
+| `SWITCHES`, `Switch` | the named switches, and the class to build your own |
+| `is_greg(jdn, cal)` | whether that day is reckoned in the Gregorian calendar under `cal` |
 | `julian_easter(y)`, `greg_easter(y)` | `(month, day)` of Easter in that calendar |
 | `j2o`, `o2j`, `g2o`, `o2g` | Julian or Gregorian `(y, m, d)` to and from a Julian Day Number |
 | `to_ord(y, m, d, cal)` | a fixed date as a Julian Day Number, in the calendar in force on that day; raises `FeastError` for a day that never existed (19 to 29 Feb 1700 under `'P'`) |
@@ -170,6 +178,9 @@ The default single-entry output line has not changed.
 | `is_leap(y, c)` | whether `y` is a leap year in calendar `c` (`'J'` or `'G'`) |
 | `fmt(jdn)` | `'30 Mar 1656'`: Julian before 1 Mar 1700, Gregorian from it |
 | `FE` | movable feasts as day offsets from Easter Sunday, e.g. `FE['Trinity'] == 56` |
+
+Every function that takes `cal` also takes a switch name (`cal='england'`), an explicit
+`'1752-09-02:1752-09-14'`, or a `Switch`.
 
 All dates are carried internally as Julian Day Numbers, so both calendars share one number
 line, and `jdn % 7` gives the weekday (0 is Monday and 6 is Sunday).
@@ -203,10 +214,78 @@ dates, so for an earlier Catholic entry use the default or `--julian`.
 Every result states its calendar, (Julian) or (Gregorian), because a date without one is
 ambiguous for anything before 1700.
 
-Other territories changed calendar at other times. England and its colonies switched in
-1752, and Sweden took its own route. The default rules model only the German Protestant
-switch in 1700. For other places, pick `--julian` or `--gregorian` to match the calendar in
-use there on the date you need.
+### Other territories: `--switch`
+
+Other territories changed calendar at other times. `--switch` takes one of these, or the two
+days of any switch written `LAST:FIRST`: the last Julian day, then the first Gregorian day.
+
+| `--switch` | Last Julian day | First Gregorian day | Easter |
+| --- | --- | --- | --- |
+| `de-protestant` | 18 Feb 1700 | 1 Mar 1700 | the default, `'P'`: 9 Apr 1724 and 29 Mar 1744 |
+| `denmark-norway` | 18 Feb 1700 | 1 Mar 1700 | as `de-protestant`, 1724 and 1744 included |
+| `prussia-duchy` | 22 Aug 1610 | 2 Sep 1610 | Gregorian from 1611; **1724 and 1744 are refused** |
+| `sweden` | 17 Feb 1753 | 1 Mar 1753 | astronomical from 1740: 18 Mar 1744 (Julian), 25 Apr 1802, 21 Apr 1805, 29 Mar 1818; **1 Mar 1700 to 30 Feb 1712 is refused** |
+| `england`, `british-colonies` | 2 Sep 1752 | 14 Sep 1752 | Gregorian from 1753 |
+| `catholic` | 4 Oct 1582 | 15 Oct 1582 | Gregorian from 1583 |
+
+```console
+$ feastdate --switch 1752-09-02:1752-09-14 "Dom. 15. p. Trin." 1752
+Dom. 15. p. Trin. 1752 = Sun 17 Sep 1752 (Gregorian)   [15. Sunday after Trinity]
+```
+
+The rules for every switch:
+
+* **A date is read in the calendar in force on that day**, as under the default: `Michaelis
+  1752` under `england` is Gregorian 29 September, and `Pasch. 1752` is Julian 29 March. The
+  days a switch dropped (3 to 13 September 1752 under `england`) are refused.
+* **Easter is Julian before the switch and Gregorian after it.** In the year of the switch
+  the Gregorian Easter is used only if it falls on or after the first Gregorian day. So
+  England kept a Julian Easter in 1752, and Sweden a Gregorian one in 1753.
+* **The two days of `LAST:FIRST` must be consecutive**, or the switch is refused: the day
+  after Julian 2 Sep 1752 is Gregorian 14 Sep, so `1752-09-02:1752-09-13` is an error. An
+  explicit switch has no Easter exceptions.
+
+What each preset models, and why:
+
+* **`denmark-norway`** changed with the Protestant estates of the Empire, and kept the same
+  astronomical Easter of the Improved Calendar, so its Easter was a week before the Gregorian
+  one in 1724 and 1744 too.
+* **`prussia-duchy`** (Ducal, later East, Prussia) followed its Polish overlord in 1610. It is
+  **not established** here whether it then kept the Protestant Easter of 1724 and 1744 with
+  the other Protestant estates, or the Gregorian Easter it had kept since 1611. Those two
+  Easters, and every movable feast of those two years, are refused. Pick
+  `--switch de-protestant` or `--gregorian` once you know which the parish kept.
+* **`sweden`** (with Finland until 1809) is the most complicated. From 1 Mar 1700 to 30 Feb
+  1712 Sweden used its own calendar, one day ahead of the Julian. **feastdate does not model
+  that calendar, and refuses every date in it**, rather than give a weekday that is a day
+  off. From 1740, still in the Julian calendar, Sweden computed Easter astronomically as the
+  Improved Calendar did. It kept that until 1844, so its Easter was a week before the
+  Gregorian one in 1744 (18 Mar 1744, Julian) and a week after it in 1802, 1805 and 1818. By
+  the same computation 1825 and 1829 should have been late too, but Sweden kept the Gregorian
+  date in those years, and so does `feastdate`. Finland after 1809 is not modelled.
+* **`england`** follows the Calendar (New Style) Act 1750, for Great Britain and its colonies.
+  The same Act moved the start of the year from 25 March to 1 January, from 1752. Before then
+  an English date from 1 January to 24 March is written with two years, `1680/81`.
+  `feastdate` reads a year the modern way, starting 1 January, so **give the later year**:
+  `Candlemas 1680/81` is `Purif. 1681`.
+* **`catholic`** is the switch of *Inter gravissimas*, followed by Spain, Portugal, Poland and
+  most of Italy. Many Catholic territories changed a few weeks or years later (France in
+  December 1582, most Catholic German states in 1583 to 1585): give those as `LAST:FIRST`.
+  Unlike `--gregorian`, it is Julian before the switch.
+* **The Protestant Swiss cantons** changed in 1701, 1724 and as late as 1812, canton by canton.
+  There is no preset for them: give the canton's two days as `LAST:FIRST`.
+
+Sources: the switch days are those of the
+[list of Gregorian adoption dates](https://en.wikipedia.org/wiki/List_of_adoption_dates_of_the_Gregorian_calendar_by_country)
+and Claus Tøndering's
+[calendar tables](https://www.webexhibits.org/calendars/year-countries.html). The Easter dates
+of the Improved Calendar, and the territories that kept them in 1724, 1744, 1802, 1805, 1818,
+1825 and 1829, are from R. H. van Gent's
+[table of anomalous Easter dates](https://webspace.science.uu.nl/~gent0113/easter/easter_text3b.htm)
+(Utrecht University), and the Swedish ones also from the
+[Swedish calendar](https://en.wikipedia.org/wiki/Swedish_calendar) article. These are secondary
+sources. Grotefend's *Zeitrechnung* is the standard reference, and a date it gives
+differently is a bug worth filing.
 
 ## Accepted spellings
 

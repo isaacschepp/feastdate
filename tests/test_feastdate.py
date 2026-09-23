@@ -831,3 +831,196 @@ def test_no_text_on_a_terminal_still_prints_help(monkeypatch, capsys):
     monkeypatch.setattr('sys.stdin', Tty(''))
     assert main([]) == 2
     assert 'usage:' in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------------------
+# Calendar switches for other territories (--switch).
+
+from feastdate import MON, SWITCHES, Switch, calendar_of, g2o, is_greg, o2j  # noqa: E402
+
+# key: (last Julian day, first Gregorian day, the weekdays either side)
+SWITCH_DAYS = {
+    'de-protestant': ((1700, 2, 18), (1700, 3, 1), 'Sun', 'Mon'),
+    'denmark-norway': ((1700, 2, 18), (1700, 3, 1), 'Sun', 'Mon'),
+    'prussia-duchy': ((1610, 8, 22), (1610, 9, 2), 'Wed', 'Thu'),
+    'sweden': ((1753, 2, 17), (1753, 3, 1), 'Wed', 'Thu'),
+    'england': ((1752, 9, 2), (1752, 9, 14), 'Wed', 'Thu'),
+    'british-colonies': ((1752, 9, 2), (1752, 9, 14), 'Wed', 'Thu'),
+    'catholic': ((1582, 10, 4), (1582, 10, 15), 'Thu', 'Fri'),
+}
+
+
+def test_every_preset_is_tested():
+    assert set(SWITCH_DAYS) == set(SWITCHES)
+
+
+@pytest.mark.parametrize('key', sorted(SWITCH_DAYS))
+def test_switch_day_before_and_after(key):
+    (jy, jm, jd), (gy, gm, gd), wd_j, wd_g = SWITCH_DAYS[key]
+    last, first = to_ord(jy, jm, jd, key), to_ord(gy, gm, gd, key)
+    assert first == last + 1
+    assert show(last, key) == '%s %d %s %d (Julian)' % (wd_j, jd, MON[jm - 1], jy)
+    assert show(first, key) == '%s %d %s %d (Gregorian)' % (wd_g, gd, MON[gm - 1], gy)
+    assert not is_greg(last, key) and is_greg(first, key)
+
+
+@pytest.mark.parametrize('key', sorted(SWITCH_DAYS))
+def test_switch_refuses_the_dropped_days(key):
+    """Every day label between the last Julian and the first Gregorian day is refused."""
+    (jy, jm, jd), first, _a, _b = SWITCH_DAYS[key]
+    dropped = 0
+    o = j2o(jy, jm, jd) + 1
+    while o2j(o) < first:
+        with pytest.raises(FeastError, match='does not exist in the .* calendar: .* was '
+                                             'followed by'):
+            to_ord(*o2j(o), key)
+        dropped += 1
+        o += 1
+    assert dropped in (10, 11)
+
+
+# A movable feast in the switch year, and Easter either side of it.
+@pytest.mark.parametrize('text, key, want', [
+    ('Pasch. 1700', 'denmark-norway', 'Sun 11 Apr 1700 (Gregorian)'),
+    ('Pasch. 1724', 'denmark-norway', 'Sun 9 Apr 1724 (Gregorian)'),   # improved Easter
+    ('Pasch. 1744', 'denmark-norway', 'Sun 29 Mar 1744 (Gregorian)'),
+    ('Pasch. 1610', 'prussia-duchy', 'Sun 8 Apr 1610 (Julian)'),       # before Aug 1610
+    ('Dom. 1. Adv. 1610', 'prussia-duchy', 'Sun 28 Nov 1610 (Gregorian)'),
+    ('Pasch. 1611', 'prussia-duchy', 'Sun 3 Apr 1611 (Gregorian)'),
+    ('Pasch. 1753', 'sweden', 'Sun 22 Apr 1753 (Gregorian)'),
+    ('Pasch. 1744', 'sweden', 'Sun 18 Mar 1744 (Julian)'),             # = 29 Mar Gregorian
+    ('Pasch. 1742', 'sweden', 'Sun 14 Mar 1742 (Julian)'),             # astronomical, from 1740
+    ('Pasch. 1739', 'sweden', 'Sun 22 Apr 1739 (Julian)'),             # still the Julian rule
+    ('Pasch. 1802', 'sweden', 'Sun 25 Apr 1802 (Gregorian)'),          # a week after Rome
+    ('Pasch. 1805', 'sweden', 'Sun 21 Apr 1805 (Gregorian)'),
+    ('Pasch. 1818', 'sweden', 'Sun 29 Mar 1818 (Gregorian)'),
+    ('Pasch. 1825', 'sweden', 'Sun 3 Apr 1825 (Gregorian)'),           # should have been late
+    ('Pasch. 1752', 'england', 'Sun 29 Mar 1752 (Julian)'),
+    ('Michaelis 1752', 'england', 'Fri 29 Sep 1752 (Gregorian)'),
+    ('Pasch. 1753', 'england', 'Sun 22 Apr 1753 (Gregorian)'),
+    ('Pasch. 1582', 'catholic', 'Sun 15 Apr 1582 (Julian)'),
+    ('Dom. 1. Adv. 1582', 'catholic', 'Sun 28 Nov 1582 (Gregorian)'),
+    ('Pasch. 1583', 'catholic', 'Sun 10 Apr 1583 (Gregorian)'),
+])
+def test_switch_feasts(text, key, want):
+    assert feast_date(text, cal=key) == want
+
+
+def test_sundays_after_trinity_run_across_the_english_switch():
+    # Trinity Sunday 1752 was Julian 24 May. The Sundays keep a seven-day step across the
+    # eleven dropped days: the 14th is Julian 30 Aug, the 15th Gregorian 17 Sep.
+    assert feast_date('Dom. Trin. 1752', cal='england') == 'Sun 24 May 1752 (Julian)'
+    assert feast_date('Dom. 14. p. Trin. 1752', cal='england') == 'Sun 30 Aug 1752 (Julian)'
+    assert feast_date('Dom. 15. p. Trin. 1752', cal='england') == 'Sun 17 Sep 1752 (Gregorian)'
+
+
+def test_de_protestant_is_P():
+    assert calendar_of('P') is SWITCHES['de-protestant']
+    for yr in range(1600, 1800):
+        assert easter_of(yr, 'de-protestant') == easter_of(yr, 'P') == easter(yr)
+        assert to_ord(yr, 6, 1, 'de-protestant') == to_ord(yr, 6, 1, 'P')
+
+
+def test_catholic_is_G_after_1582_and_J_before():
+    for yr in range(1583, 1800):
+        assert easter_of(yr, 'catholic') == easter_of(yr, 'G')
+        assert name_of(yr, 6, 1, 'catholic') == name_of(yr, 6, 1, 'G')
+    for yr in range(1500, 1582):
+        assert easter_of(yr, 'catholic') == easter_of(yr, 'J')
+        assert to_ord(yr, 6, 1, 'catholic') == to_ord(yr, 6, 1, 'J')
+
+
+def test_england_is_gregorian_from_1753_and_julian_to_1752():
+    for yr in range(1600, 1753):
+        assert easter_of(yr, 'england') == easter_of(yr, 'J')
+    for yr in range(1753, 1900):
+        assert easter_of(yr, 'england') == easter_of(yr, 'G')
+
+
+def test_prussia_refuses_the_disputed_easters():
+    for yr in (1724, 1744):
+        with pytest.raises(FeastError, match='not established whether Ducal Prussia'):
+            easter_of(yr, 'prussia-duchy')
+        with pytest.raises(FeastError, match='not established'):
+            resolve('Pasch.', yr, 'prussia-duchy')
+    # A fixed feast does not need Easter.
+    assert feast_date('Michaelis 1724', cal='prussia-duchy') == 'Fri 29 Sep 1724 (Gregorian)'
+
+
+def test_sweden_refuses_the_swedish_calendar_of_1700_to_1712():
+    assert feast_date('Pasch. 1699', cal='sweden') == 'Sun 9 Apr 1699 (Julian)'
+    assert to_ord(1700, 2, 28, 'sweden') == j2o(1700, 2, 28)
+    for y, m, d in ((1700, 2, 29), (1700, 3, 1), (1705, 6, 1), (1712, 2, 29)):
+        with pytest.raises(FeastError, match='Swedish calendar of 1 Mar 1700'):
+            to_ord(y, m, d, 'sweden')
+    for yr in range(1700, 1712):
+        with pytest.raises(FeastError, match='Swedish calendar'):
+            easter_of(yr, 'sweden')
+    with pytest.raises(FeastError, match='Swedish calendar'):
+        resolve('Septuagesima 1712', cal='sweden')
+    assert to_ord(1712, 3, 1, 'sweden') == j2o(1712, 3, 1)
+    assert feast_date('Pasch. 1712', cal='sweden') == 'Sun 20 Apr 1712 (Julian)'
+
+
+def test_explicit_switch_is_the_preset():
+    given = calendar_of('1752-09-02:1752-09-14')
+    for yr in range(1740, 1770):
+        assert easter_of(yr, given) == easter_of(yr, 'england')
+        assert resolve('Dom. 1. Adv.', yr, given) == resolve('Dom. 1. Adv.', yr, 'england')
+    with pytest.raises(FeastError, match='does not exist in the given calendar'):
+        to_ord(1752, 9, 10, given)
+
+
+@pytest.mark.parametrize('bad, why', [
+    ('1752-09-02:1752-09-13', r'not a switch: the day after 2 Sep 1752 \(Julian\) is 14 Sep'),
+    ('1752-09-02:1752-09-15', 'not a switch'),
+    ('1752-02-30:1752-03-12', 'last Julian day 1752-02-30 does not exist'),
+    ('1752-13-01:1752-09-14', 'does not exist'),
+    ('mars', 'unknown calendar'),
+    ('1752-09-02', 'unknown calendar'),
+])
+def test_bad_switch_is_refused(bad, why):
+    with pytest.raises(FeastError, match=why):
+        calendar_of(bad)
+
+
+def test_switch_constructor_checks_the_pair():
+    with pytest.raises(FeastError, match='not a switch'):
+        Switch('x', 'x', (1700, 2, 18), (1700, 2, 28))
+
+
+@pytest.mark.parametrize('key', sorted(SWITCH_DAYS))
+def test_name_of_round_trips_across_each_switch(key):
+    """Every day from two years before a switch to two after it: every name resolves back
+    to its day, and every Sunday has one."""
+    y0 = calendar_of(key).first_greg[0]
+    for o in range(j2o(y0 - 2, 1, 1), g2o(y0 + 3, 1, 1)):
+        y, m, d = ymd(o, key)
+        names = name_of(y, m, d, key)
+        for name, _gloss in names:
+            assert resolve(name, y, key)[0] == o, (name, y, m, d, key)
+        if o % 7 == 6:
+            assert names, ('nameless Sunday', y, m, d, key)
+
+
+def test_cli_switch(capsys):
+    assert main(['--switch', 'england', 'Michaelis 1752']) == 0
+    assert capsys.readouterr().out == ('Michaelis 1752 = Fri 29 Sep 1752 (Gregorian)   '
+                                       '[fixed feast 29 Sep]\n')
+    assert main(['--switch', '1610-08-22:1610-09-02', '--easter', '1611']) == 0
+    assert capsys.readouterr().out == 'Easter 1611 = Sun 3 Apr 1611 (Gregorian)\n'
+    assert main(['--switch', 'sweden', '--iso', 'Pasch. 1744']) == 0
+    assert capsys.readouterr().out == '1744-03-18 J\n'
+
+
+def test_cli_switch_refusals(capsys):
+    assert main(['--switch', 'prussia-duchy', '--easter', '1724']) == 2
+    assert 'not established' in capsys.readouterr().err
+    assert main(['--switch', 'england', '--json', '--date', '1752-09-10']) == 2
+    out = json.loads(capsys.readouterr().out)
+    assert 'does not exist in the British calendar' in out['error']
+    with pytest.raises(SystemExit) as e:
+        main(['--switch', 'mars', 'Pasch. 1700'])
+    assert e.value.code == 2
+    with pytest.raises(SystemExit):
+        main(['--switch', 'england', '--gregorian', 'Pasch. 1700'])

@@ -13,6 +13,10 @@ Calendar codes used throughout:
     Gregorian throughout (Catholic territories, from 1582/83).
 ``'J'``
     Julian throughout.
+
+Any other territory is a :class:`Switch`: a named one from :data:`SWITCHES`
+(``'england'``, ``'sweden'``, ...) or an explicit ``'1752-09-02:1752-09-14'``. Every
+function that takes ``cal`` takes any of these; see :func:`calendar_of`.
 """
 import re
 
@@ -20,7 +24,7 @@ __all__ = [
     'julian_easter', 'greg_easter', 'easter', 'easter_of',
     'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year', 'is_leap',
     'fmt', 'show', 'resolve', 'feast_date', 'FeastError', 'name_of', 'week_of', 'ymd',
-    'FE', 'MON', 'DAY', 'SWITCH',
+    'FE', 'MON', 'DAY', 'SWITCH', 'Switch', 'SWITCHES', 'calendar_of', 'is_greg',
 ]
 
 # ---------------------------------------------------------------------------------------
@@ -113,15 +117,7 @@ def easter(y):
     a Hessian register dates Maundy Thursday 1724 (``Die Viridium``) to 6 April, three
     days before the Protestant Easter and ten days before the Gregorian one.
     """
-    if y == 1724:
-        return g2o(1724, 4, 9)
-    if y == 1744:
-        return g2o(1744, 3, 29)
-    if y >= 1700:
-        m, d = greg_easter(y)
-        return g2o(y, m, d)
-    m, d = julian_easter(y)
-    return j2o(y, m, d)
+    return PROTESTANT.easter(y)
 
 
 #: Movable feasts and named Sundays, in days from Easter Sunday.
@@ -139,19 +135,166 @@ FE = {'Septuagesima': -63, 'Sexagesima': -56, 'Estomihi': -49, 'Quinquagesima': 
 SWITCH = g2o(1700, 3, 1)    # the first Gregorian day in the Protestant estates
 
 
+class Switch:
+    """A territory's change from the Julian to the Gregorian calendar.
+
+    ``last_julian`` is the last Julian day ``(y, m, d)`` and ``first_greg`` the Gregorian
+    day that followed it. They must be consecutive days, or the switch is refused: a
+    typo in either would otherwise move every date on one side of it.
+
+    Easter is the Julian one before the switch and the Gregorian one after it. The year of
+    the switch keeps the Gregorian Easter only if that falls on or after the first
+    Gregorian day. ``easter_from`` overrides that year, for a territory that took up a new
+    Easter reckoning before its solar switch (Sweden, 1740). ``easter_moved`` gives the
+    years a territory's Easter was not the Gregorian one, as Gregorian ``(month, day)``;
+    ``easter_unknown`` the years where that is not established, which are refused rather
+    than guessed. ``gap`` is ``(first, last, why)``: ordinals the territory reckoned in a
+    calendar this module does not model, also refused.
+
+    ``catholic`` names Corpus Christi and the Sundays after Pentecost in :func:`name_of`;
+    ``toten`` names Totensonntag from 1816.
+    """
+
+    def __init__(self, key, label, last_julian, first_greg, easter_from=None,
+                 easter_moved=None, easter_unknown=None, gap=None, catholic=False,
+                 toten=False):
+        self.key, self.label = key, label
+        self.last_julian, self.first_greg = tuple(last_julian), tuple(first_greg)
+        for which, ymd_, conv, back in (('last Julian', self.last_julian, j2o, o2j),
+                                        ('first Gregorian', self.first_greg, g2o, o2g)):
+            if not 1 <= ymd_[1] <= 12 or back(conv(*ymd_)) != ymd_:
+                raise FeastError('%s day %d-%02d-%02d does not exist' % ((which,) + ymd_))
+        self.first = g2o(*self.first_greg)
+        after = j2o(*self.last_julian) + 1
+        if after != self.first:
+            y, m, d = o2g(after)
+            raise FeastError('not a switch: the day after %s (Julian) is %d %s %d (Gregorian), '
+                             'not %s' % (_dmy(self.last_julian), d, MON[m - 1], y,
+                                         _dmy(self.first_greg)))
+        if easter_from is None:
+            y0 = self.first_greg[0]
+            easter_from = y0 if g2o(y0, *greg_easter(y0)) >= self.first else y0 + 1
+        self.easter_from = easter_from
+        self.easter_moved = dict(easter_moved or {})
+        self.easter_unknown = dict(easter_unknown or {})
+        self.gap = gap
+        self.catholic, self.toten = catholic, toten
+
+    def __repr__(self):
+        return 'Switch(%r)' % self.key
+
+    def easter(self, y):
+        """Ordinal of Easter Sunday in year ``y``."""
+        if y in self.easter_unknown:
+            raise FeastError('Easter %d under %s: %s' % (y, self.key, self.easter_unknown[y]))
+        if y >= self.easter_from:
+            o = g2o(y, *self.easter_moved.get(y, greg_easter(y)))
+        else:
+            o = j2o(y, *julian_easter(y))
+        return self.check(o, 'Easter %d' % y)
+
+    def check(self, o, what):
+        """``o``, unless it falls in :attr:`gap`."""
+        if self.gap and self.gap[0] <= o <= self.gap[1]:
+            raise FeastError('%s falls in %s' % (what, self.gap[2]))
+        return o
+
+
+def _dmy(ymd_):
+    return '%d %s %d' % (ymd_[2], MON[ymd_[1] - 1], ymd_[0])
+
+
+#: Named switches for ``cal``. Sources are in the README; every date here is tested.
+SWITCHES = {}
+
+
+def _preset(*args, **kw):
+    s = Switch(*args, **kw)
+    SWITCHES[s.key] = s
+    return s
+
+
+# The Protestant estates of the Empire: the Improved Calendar, whose astronomical Easter
+# fell a week before the Gregorian one in 1724 and 1744 (see easter()). This is 'P'.
+PROTESTANT = _preset('de-protestant', 'Protestant', (1700, 2, 18), (1700, 3, 1),
+                     easter_moved={1724: (4, 9), 1744: (3, 29)}, toten=True)
+# Denmark-Norway changed with the Empire and kept the same two early Easters.
+_preset('denmark-norway', 'Danish-Norwegian', (1700, 2, 18), (1700, 3, 1),
+        easter_moved={1724: (4, 9), 1744: (3, 29)})
+# Ducal Prussia followed its Polish overlord in 1610. Whether it kept the Protestant
+# Easter of 1724 and 1744 with the Empire, or the Gregorian one it had kept since 1610, is
+# not established, so those two years are refused.
+_PRUSSIA_WHY = ('not established whether Ducal Prussia kept the Protestant Easter '
+                '(%s) or the Gregorian one (%s): choose with --switch de-protestant or '
+                '--gregorian')
+_preset('prussia-duchy', 'Ducal Prussian', (1610, 8, 22), (1610, 9, 2),
+        easter_unknown={1724: _PRUSSIA_WHY % ('9 Apr', '16 Apr'),
+                        1744: _PRUSSIA_WHY % ('29 Mar', '5 Apr')}, toten=True)
+# Sweden (with Finland until 1809). From 1 Mar 1700 to 30 Feb 1712 the Swedish calendar ran
+# one day ahead of the Julian; that is not modelled and is refused. The astronomical Easter
+# of the Improved Calendar was taken up in 1740, still in the Julian calendar, and kept
+# until 1844: a week before the Gregorian Easter in 1744, a week after it in 1802, 1805 and
+# 1818. (1825 and 1829 should have been late too, but were not.)
+_preset('sweden', 'Swedish', (1753, 2, 17), (1753, 3, 1), easter_from=1740,
+        easter_moved={1744: (3, 29), 1802: (4, 25), 1805: (4, 21), 1818: (3, 29)},
+        gap=(j2o(1700, 2, 29), j2o(1712, 2, 29),
+             'the Swedish calendar of 1 Mar 1700 to 30 Feb 1712, one day ahead of the '
+             'Julian, which feastdate does not model'))
+# Great Britain and its colonies, by the Calendar (New Style) Act 1750.
+_preset('england', 'British', (1752, 9, 2), (1752, 9, 14))
+SWITCHES['british-colonies'] = SWITCHES['england']
+# The Catholic switch of Inter gravissimas, 1582. Unlike 'G', Julian before it.
+_preset('catholic', 'Catholic', (1582, 10, 4), (1582, 10, 15), catholic=True)
+
+
+def calendar_of(cal):
+    """``cal`` as the rest of this module takes it: ``'G'``, ``'J'`` or a :class:`Switch`.
+
+    Accepts ``'P'`` (the German Protestant switch), ``'G'``, ``'J'``, a key of
+    :data:`SWITCHES` (``'england'``), an explicit ``'YYYY-MM-DD:YYYY-MM-DD'`` (the last
+    Julian day, the first Gregorian day), or a :class:`Switch`.
+    """
+    if isinstance(cal, Switch) or cal in ('G', 'J'):
+        return cal
+    if cal == 'P':
+        return PROTESTANT
+    if isinstance(cal, str):
+        key = cal.strip().lower()
+        if key in SWITCHES:
+            return SWITCHES[key]
+        m = re.fullmatch(r'(\d{1,4})-(\d{1,2})-(\d{1,2}):(\d{1,4})-(\d{1,2})-(\d{1,2})', key)
+        if m:
+            n = [int(x) for x in m.groups()]
+            return Switch(key, 'given', n[:3], n[3:])
+    raise FeastError('unknown calendar %r: use P, G, J, one of %s, or LAST-JULIAN:FIRST-'
+                     'GREGORIAN (1752-09-02:1752-09-14)' % (cal, ', '.join(sorted(SWITCHES))))
+
+
+def is_greg(o, cal):
+    """Whether ordinal ``o`` is reckoned (and printed) in the Gregorian calendar."""
+    c = calendar_of(cal)
+    return c == 'G' or (isinstance(c, Switch) and o >= c.first)
+
+
+def _catholic(cal):
+    c = calendar_of(cal)
+    return c == 'G' or (isinstance(c, Switch) and c.catholic)
+
+
 def cal_of_year(y, cal, m=None, d=None):
     """Which calendar a fixed date is reckoned in: ``'J'`` or ``'G'``.
 
     Under ``'P'`` the year 1700 is split: 1 Jan to 18 Feb were still Julian and the
     Improved Calendar began on 1 Mar. Give the month (and day) to be answered for that
     day, so ``cal_of_year(1700, 'P', 1, 6)`` is ``'J'``. With the year alone the answer is
-    for the year as a whole, which from 1700 on is ``'G'``.
+    for the year as a whole, which from the year of the switch on (1700) is ``'G'``.
     """
-    if cal != 'P':
-        return cal
+    c = calendar_of(cal)
+    if not isinstance(c, Switch):
+        return c
     if m is None:
-        return 'G' if y >= 1700 else 'J'
-    return 'G' if (y, m, d or 1) >= (1700, 3, 1) else 'J'
+        return 'G' if y >= c.first_greg[0] else 'J'
+    return 'G' if (y, m, d or 1) >= c.first_greg else 'J'
 
 
 def is_leap(y, c):
@@ -169,22 +312,29 @@ def to_ord(y, m, d, cal):
     30 Feb, 29 Feb 1800 in the Gregorian calendar, or under ``'P'`` 19 to 29 Feb 1700,
     the days the Improved Calendar dropped.
     """
-    c = cal_of_year(y, cal, m, d)
+    sw = calendar_of(cal)
+    c = cal_of_year(y, sw, m, d)
     o = g2o(y, m, d) if c == 'G' else j2o(y, m, d)
     if (o2g(o) if c == 'G' else o2j(o)) != (y, m, d):
         raise FeastError('%d %s %d does not exist in the %s calendar'
                          % (d, MON[m - 1] if 1 <= m <= 12 else '?', y,
                             'Gregorian' if c == 'G' else 'Julian'))
-    if cal == 'P' and c == 'J' and o >= SWITCH:
-        raise FeastError('%d %s 1700 does not exist in the Protestant calendar: '
-                         '18 Feb 1700 (Julian) was followed by 1 Mar 1700' % (d, MON[m - 1]))
+    if isinstance(sw, Switch):
+        if c == 'J' and o >= sw.first:
+            raise FeastError('%d %s %d does not exist in the %s calendar: %s (Julian) was '
+                             'followed by %s' % (d, MON[m - 1], y, sw.label,
+                                                 _dmy(sw.last_julian), _dmy(sw.first_greg)))
+        sw.check(o, '%d %s %d' % (d, MON[m - 1], y))
     return o
 
 
 def easter_of(y, cal):
-    """Ordinal of Easter Sunday in year ``y`` under calendar ``cal`` ('P', 'G' or 'J')."""
-    if cal == 'P':
-        return easter(y)
+    """Ordinal of Easter Sunday in year ``y`` under calendar ``cal`` ('P', 'G', 'J' or any
+    calendar :func:`calendar_of` takes). Raises :class:`FeastError` for a year whose Easter
+    that calendar does not establish."""
+    cal = calendar_of(cal)
+    if isinstance(cal, Switch):
+        return cal.easter(y)
     if cal == 'G':
         m, d = greg_easter(y)
         return g2o(y, m, d)
@@ -197,7 +347,7 @@ DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 def show(o, cal):
     """``'Sun 30 Mar 1656 (Julian)'``: the ordinal in the calendar in force on that day."""
-    greg = cal == 'G' or (cal == 'P' and o >= SWITCH)
+    greg = is_greg(o, cal)
     y, m, d = o2g(o) if greg else o2j(o)
     return "%s %d %s %d (%s)" % (DAY[o % 7], d, MON[m - 1], y,
                                  'Gregorian' if greg else 'Julian')
@@ -478,6 +628,7 @@ def resolve(text, year=None, cal='P'):
     Raises :class:`FeastError` when nothing can be resolved, and when any word or number
     in the text is not accounted for, rather than resolve the rest and drop it.
     """
+    cal = calendar_of(cal)
     toks = tokens(text)
     nums, words, last = [], [], False
     last_word = None
@@ -699,6 +850,8 @@ def resolve(text, year=None, cal='P'):
             o += 1 + (target - o - 1) % 7 + 7 * ((count or 1) - 1)
         what = '%s%s %s %s' % ('%d. ' % count if count else '', FERIA_DAY[target],
                                'before' if ante else 'after', what)
+    if isinstance(cal, Switch):
+        cal.check(o, '%r, %s in the Julian calendar,' % (text, _dmy(o2j(o))))
     return o, what
 
 
@@ -801,7 +954,7 @@ def _nth(n):
 
 def ymd(o, cal):
     """An ordinal -> ``(y, m, d)`` in the calendar in force on that day, as :func:`show`."""
-    return o2g(o) if cal == 'G' or (cal == 'P' and o >= SWITCH) else o2j(o)
+    return o2g(o) if is_greg(o, cal) else o2j(o)
 
 
 def name_of(y, m, d, cal='P'):
@@ -820,6 +973,8 @@ def name_of(y, m, d, cal='P'):
 
     Raises :class:`FeastError` for a day that does not exist in that calendar.
     """
+    cal = calendar_of(cal)
+    catholic = _catholic(cal)
     o = to_ord(y, m, d, cal)
     wd = o % 7
     e = easter_of(y, cal)
@@ -829,7 +984,7 @@ def name_of(y, m, d, cal='P'):
     # The Easter cycle, Septuagesima to the week of Trinity.
     if k in REV_EASTER:
         out.append(REV_EASTER[k])
-    elif cal == 'G' and k == REV_CORPUS[0]:
+    elif catholic and k == REV_CORPUS[0]:
         out.append(REV_CORPUS[1:])
     elif wd != 6 and k - (wd + 1) in REV_POST:
         sun = REV_POST[k - (wd + 1)]
@@ -845,14 +1000,14 @@ def name_of(y, m, d, cal='P'):
         if trin < o < adv1:
             n = (o - trin) // 7
             out.append(('Dom. %d. p. Trin.' % n, '%s Sunday after Trinity' % _nth(n)))
-            if cal == 'G':
+            if catholic:
                 out.append(('Dom. %d. p. Pent.' % (n + 1),
                             '%s Sunday after Pentecost' % _nth(n + 1)))
             if o == adv1 - 7:
                 out.append(('Dom. ult. p. Trin.', 'last Sunday after Trinity'))
-                if cal == 'G':
+                if catholic:
                     out.append(('Dom. ult. p. Pent.', 'last Sunday after Pentecost'))
-                if cal == 'P' and y >= TOTEN_FROM:
+                if isinstance(cal, Switch) and cal.toten and y >= TOTEN_FROM:
                     out.append(('Totensonntag', 'Sunday of the Dead, the last before Advent'))
         elif adv1 <= o < adv1 + 28:
             n = (o - adv1) // 7 + 1

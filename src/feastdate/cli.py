@@ -5,8 +5,8 @@ import re
 import sys
 
 from . import __version__
-from .core import (DAY, SWITCH, FeastError, easter_of, name_of, resolve, show, to_ord,
-                   week_of, ymd)
+from .core import (DAY, SWITCHES, FeastError, calendar_of, easter_of, is_greg, name_of,
+                   resolve, show, to_ord, week_of, ymd)
 
 EPILOG = """examples:
   feastdate "Dom. Palm. 1656"          Sun 30 Mar 1656 (Julian)
@@ -15,6 +15,8 @@ EPILOG = """examples:
   feastdate --easter 1744              Easter Sunday of that year
   feastdate --date 1657-07-26          the reverse: what the register called that day
   feastdate --gregorian "Dom. 1. Adv. 1650"   a Catholic parish
+  feastdate --switch england "Michaelis 1752"  the British switch of Sep 1752
+  feastdate --switch 1610-08-22:1610-09-02 --easter 1610   any switch, given as its two days
   feastdate --iso "Dom. Palm. 1656"    1656-03-30 J
   feastdate --json - < entries.txt     one entry per line in, one JSON object per line out
 
@@ -26,7 +28,13 @@ default calendar: Julian to 1699, the Protestant Improved Calendar from 1700.
 a year inside the text is read only from 1500 to 1899; give any other year
 (100 to 9999) as the last argument. --easter takes any year from 1 to 9999.
 --date reads the date in the calendar in force on it: under the default,
-Julian before 1 Mar 1700."""
+Julian before 1 Mar 1700.
+
+--switch takes a territory:
+  %s
+or the last Julian day and the first Gregorian day, LAST:FIRST
+(1752-09-02:1752-09-14). Easter is Julian before the switch, Gregorian after.""" % ', '.join(
+    SWITCHES)
 
 YEAR_MIN, YEAR_MAX = 1, 9999
 
@@ -51,6 +59,14 @@ def date_arg(s):
     return y, int(m.group(2)), int(m.group(3))
 
 
+def switch_arg(s):
+    """argparse type for ``--switch``: a preset name or ``LAST-JULIAN:FIRST-GREGORIAN``."""
+    try:
+        return calendar_of(s)
+    except FeastError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog='feastdate',
@@ -62,6 +78,9 @@ def build_parser():
                      help='Gregorian throughout (Catholic parishes)')
     cal.add_argument('--julian', dest='cal', action='store_const', const='J',
                      help='Julian throughout')
+    cal.add_argument('--switch', dest='cal', metavar='TERRITORY', type=switch_arg,
+                     help='the Julian-to-Gregorian switch of a territory (england, sweden, '
+                          '...) or LAST:FIRST, e.g. 1752-09-02:1752-09-14')
     p.add_argument('--easter', metavar='YEAR', type=year_arg,
                    help='print Easter Sunday of YEAR')
     p.add_argument('--date', metavar='YYYY-MM-DD', type=date_arg,
@@ -90,7 +109,15 @@ def main(argv=None):
     if args.easter is not None:
         if args.text:
             p.error('--easter takes a year only')
-        o = easter_of(args.easter, args.cal)
+        try:
+            o = easter_of(args.easter, args.cal)
+        except FeastError as e:
+            if args.fmt == 'json':
+                print(json.dumps({'input': 'Easter %d' % args.easter, 'error': str(e)},
+                                 ensure_ascii=False))
+            else:
+                print('feastdate: %s' % e, file=sys.stderr)
+            return 2
         if args.fmt:
             print(render(args.fmt, 'Easter %d' % args.easter, o, 'easter', args.cal))
         else:
@@ -158,7 +185,7 @@ def render(fmt, given, o, what, cal, text=None):
 
 def cal_greg(o, cal):
     """Whether ``o`` is printed in the Gregorian calendar, the rule :func:`show` uses."""
-    return cal == 'G' or (cal == 'P' and o >= SWITCH)
+    return is_greg(o, cal)
 
 
 def _stdin_is_tty():
