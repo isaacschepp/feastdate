@@ -139,15 +139,19 @@ FE = {'Septuagesima': -63, 'Sexagesima': -56, 'Estomihi': -49, 'Quinquagesima': 
 SWITCH = g2o(1700, 3, 1)    # the first Gregorian day in the Protestant estates
 
 
-def cal_of_year(y, cal):
-    """Which calendar a year's *fixed* dates (Christmas, Epiphany) are mostly reckoned in.
+def cal_of_year(y, cal, m=None, d=None):
+    """Which calendar a fixed date is reckoned in: ``'J'`` or ``'G'``.
 
-    Under ``'P'`` the year 1700 is split: its January and February (to 18 Feb) were still
-    Julian. :func:`to_ord` handles that; this answers for the year as a whole.
+    Under ``'P'`` the year 1700 is split: 1 Jan to 18 Feb were still Julian and the
+    Improved Calendar began on 1 Mar. Give the month (and day) to be answered for that
+    day, so ``cal_of_year(1700, 'P', 1, 6)`` is ``'J'``. With the year alone the answer is
+    for the year as a whole, which from 1700 on is ``'G'``.
     """
-    if cal == 'P':
+    if cal != 'P':
+        return cal
+    if m is None:
         return 'G' if y >= 1700 else 'J'
-    return cal
+    return 'G' if (y, m, d or 1) >= (1700, 3, 1) else 'J'
 
 
 def to_ord(y, m, d, cal):
@@ -155,11 +159,21 @@ def to_ord(y, m, d, cal):
 
     Under ``'P'`` that is decided by the day, not the year: Epiphany 1700 is Julian
     6 Jan 1700, because the Improved Calendar began only on 1 Mar 1700.
+
+    Raises :class:`FeastError` for a day that does not exist in that calendar, such as
+    30 Feb, 29 Feb 1800 in the Gregorian calendar, or under ``'P'`` 19 to 29 Feb 1700,
+    the days the Improved Calendar dropped.
     """
-    if cal == 'P':
-        o = j2o(y, m, d)
-        return o if o < SWITCH else g2o(y, m, d)
-    return g2o(y, m, d) if cal == 'G' else j2o(y, m, d)
+    c = cal_of_year(y, cal, m, d)
+    o = g2o(y, m, d) if c == 'G' else j2o(y, m, d)
+    if (o2g(o) if c == 'G' else o2j(o)) != (y, m, d):
+        raise FeastError('%d %s %d does not exist in the %s calendar'
+                         % (d, MON[m - 1] if 1 <= m <= 12 else '?', y,
+                            'Gregorian' if c == 'G' else 'Julian'))
+    if cal == 'P' and c == 'J' and o >= SWITCH:
+        raise FeastError('%d %s 1700 does not exist in the Protestant calendar: '
+                         '18 Feb 1700 (Julian) was followed by 1 Mar 1700' % (d, MON[m - 1]))
+    return o
 
 
 def easter_of(y, cal):

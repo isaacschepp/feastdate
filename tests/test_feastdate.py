@@ -2,7 +2,8 @@ import re
 
 import pytest
 
-from feastdate import FE, SWITCH, FeastError, easter, feast_date, fmt, j2o, resolve, show
+from feastdate import (FE, SWITCH, FeastError, cal_of_year, easter, feast_date, fmt, j2o,
+                       resolve, show, to_ord)
 from feastdate.cli import main
 
 
@@ -164,3 +165,38 @@ def test_cli_year_range_is_the_same_on_every_route(argv):
     with pytest.raises(SystemExit) as e:
         main(argv)
     assert e.value.code == 2
+
+
+@pytest.mark.parametrize('d', range(19, 30))
+def test_to_ord_rejects_the_dropped_days_of_1700(d):
+    # 18 Feb 1700 (Julian) was followed by 1 Mar 1700 in the Protestant estates.
+    with pytest.raises(FeastError, match='does not exist'):
+        to_ord(1700, 2, d, 'P')
+
+
+def test_to_ord_is_monotonic_across_the_switch():
+    assert to_ord(1700, 2, 18, 'P') + 1 == to_ord(1700, 3, 1, 'P') == SWITCH
+    assert show(to_ord(1700, 2, 18, 'P'), 'P') == 'Sun 18 Feb 1700 (Julian)'
+    assert show(to_ord(1700, 3, 1, 'P'), 'P') == 'Mon 1 Mar 1700 (Gregorian)'
+
+
+@pytest.mark.parametrize('y, m, d, cal', [
+    (1656, 2, 30, 'P'), (1800, 2, 29, 'G'), (1800, 2, 29, 'P'), (1656, 13, 1, 'J'),
+])
+def test_to_ord_rejects_days_that_do_not_exist(y, m, d, cal):
+    with pytest.raises(FeastError, match='does not exist'):
+        to_ord(y, m, d, cal)
+
+
+def test_to_ord_accepts_julian_leap_days():
+    assert show(to_ord(1600, 2, 29, 'P'), 'P') == 'Fri 29 Feb 1600 (Julian)'
+    assert show(to_ord(1700, 2, 29, 'J'), 'J') == 'Thu 29 Feb 1700 (Julian)'
+
+
+def test_cal_of_year_answers_for_the_day():
+    assert cal_of_year(1700, 'P', 1, 6) == 'J'
+    assert cal_of_year(1700, 'P', 2, 18) == 'J'
+    assert cal_of_year(1700, 'P', 3, 1) == 'G'
+    assert cal_of_year(1700, 'P') == 'G'
+    assert cal_of_year(1699, 'P') == 'J'
+    assert cal_of_year(1700, 'G', 1, 6) == 'G'

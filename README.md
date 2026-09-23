@@ -83,6 +83,8 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | `easter_of(y, cal)` | Easter Sunday under `cal` (`'P'`, `'G'` or `'J'`) |
 | `julian_easter(y)`, `greg_easter(y)` | `(month, day)` of Easter in that calendar |
 | `j2o`, `o2j`, `g2o`, `o2g` | Julian or Gregorian `(y, m, d)` to and from a Julian Day Number |
+| `to_ord(y, m, d, cal)` | a fixed date as a Julian Day Number, in the calendar in force on that day; raises `FeastError` for a day that never existed (19 to 29 Feb 1700 under `'P'`) |
+| `cal_of_year(y, cal, m=None, d=None)` | `'J'` or `'G'`: the calendar a fixed date is reckoned in |
 | `fmt(jdn)` | `'30 Mar 1656'`: Julian before 1 Mar 1700, Gregorian from it |
 | `FE` | movable feasts as day offsets from Easter Sunday, e.g. `FE['Trinity'] == 56` |
 
