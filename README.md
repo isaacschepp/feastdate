@@ -87,6 +87,7 @@ meant. If it recognises nothing, it prints an error and exits with status 2.
 | `j2o`, `o2j`, `g2o`, `o2g` | Julian or Gregorian `(y, m, d)` to and from a Julian Day Number |
 | `to_ord(y, m, d, cal)` | a fixed date as a Julian Day Number, in the calendar in force on that day; raises `FeastError` for a day that never existed (19 to 29 Feb 1700 under `'P'`) |
 | `cal_of_year(y, cal, m=None, d=None)` | `'J'` or `'G'`: the calendar a fixed date is reckoned in |
+| `is_leap(y, c)` | whether `y` is a leap year in calendar `c` (`'J'` or `'G'`) |
 | `fmt(jdn)` | `'30 Mar 1656'`: Julian before 1 Mar 1700, Gregorian from it |
 | `FE` | movable feasts as day offsets from Easter Sunday, e.g. `FE['Trinity'] == 56` |
 
@@ -195,19 +196,68 @@ German registers count them:
 * `letzter Ostertag` is the third day, as the registers use it.
 * A feast was kept three days at most, so `4. Ostertag` is refused.
 
-**Fixed feasts** give you the weekday too:
+**Fixed feasts** give you the weekday too. A name of two words, such as `mariae verk`,
+matches those two words in order, with only connecting words (`et`, `und`, `S.`) between
+them, and it wins over a one-word name on either word: `Nativ. Mariae` is 8 September,
+not Christmas, `Mariae Himmelfahrt` is 15 August, not Ascension, and `Johannis Evang.` is
+27 December, not 24 June.
 
 | Feast | Date | Recognised by |
 | --- | --- | --- |
 | Circumcision / New Year | 1 Jan | `circumcis`, `neujahr` |
+| Conversion of St Paul | 25 Jan | `pauli bekehr`, `bekehr pauli`, `convers pauli` |
 | Purification (Candlemas) | 2 Feb | `purif`, `lichtmess` |
+| St Matthias | 24 Feb, **25 Feb in a leap year** | `matthia`, `mathia` |
+| St Gregory | 12 Mar | `gregor` |
 | Annunciation | 25 Mar | `annunc`, `mariae verk` |
+| St George | 23 Apr | `georg` |
+| SS Philip and James / Walpurgis | 1 May | `philippi jac`, `phil jac`, `walpurg` |
+| Finding of the Cross | 3 May | `kreuzerfind`, `kreuz erfind`, `invent cruc` |
 | St John the Baptist | 24 Jun | `johannis`, `joh bapt` |
+| SS Peter and Paul | 29 Jun | `petri pauli`, `peter paul` |
+| Visitation | 2 Jul | `visitat`, `heimsuch` |
+| St Mary Magdalene | 22 Jul | `magdalen` |
+| St James | 25 Jul | `jacob` |
+| St Lawrence | 10 Aug | `laurent` |
+| Assumption | 15 Aug | `assumpt`, `mariae himmelf`, `himmelf mariae` |
+| St Bartholomew | 24 Aug | `bartholom` |
+| Nativity of Mary | 8 Sep | `nativ mariae`, `mariae geburt` |
+| Exaltation of the Cross | 14 Sep | `kreuzerhoh`, `kreuz erhoh`, `exalt cruc` |
+| St Matthew | 21 Sep | `matthae`, `matthai`, `matthau`, `mathae` |
 | Michaelmas | 29 Sep | `michael` |
+| St Gall | 16 Oct | `galli`, `gallus` |
+| SS Simon and Jude | 28 Oct | `simon jud` |
+| All Saints | 1 Nov | `omnium sanct`, `allerheilig` |
+| All Souls | 2 Nov | `omnium anim`, `allerseel` |
 | Martinmas | 11 Nov | `martini` |
+| St Elisabeth | 19 Nov | `elisab` |
 | St Andrew | 30 Nov | `andreae`, `andreas` |
+| St Thomas | 21 Dec | `thomae`, `thomas` |
 | Christmas | 25 Dec | `nativ`, `christtag`, `weihnacht`, `christmas` |
 | St Stephen | 26 Dec | `stephan` |
+| St John the Evangelist | 27 Dec | `johannis evang`, `joh evang` |
+| Holy Innocents | 28 Dec | `innocent`, `unschuld`, `kindlein` |
+
+A saint's epithet is a connecting word: `Andreae Apost.`, `Matthaei Apost. et Evang.`,
+`Michaelis Archangeli`, `Laurentii Martyr.` (`apost`, `evang`, `archang`, `martyr`, `virg`,
+`episc`).
+
+**St Matthias and the leap day.** The Julian calendar counted its leap day in by doubling
+24 February (the *bissextile* day), so in a leap year the feasts after it moved a day
+later, and German almanacs, Protestant and Catholic, kept Matthias on **25 February in a
+leap year** long after 1700. `feastdate` follows that reckoning for any feast from 24 to
+28 February, which in this table is Matthias alone. The leap year is the one of the
+calendar in force on the day: 1800 is a leap year in the Julian calendar but not in the
+Gregorian, so `Matthiae 1800` is 24 February by default and 25 February with `--julian`.
+The label says when the rule applied:
+
+```console
+$ feastdate "Matthiae 1680"
+Matthiae 1680 = Wed 25 Feb 1680 (Julian)   [fixed feast 25 Feb, leap year]
+```
+
+Under the default rules there was no St Matthias in 1700, since 18 February (Julian) was
+followed by 1 March, and `Matthiae 1700` is refused.
 
 **Nothing is skipped.** Every word and number in the text must be accounted for: a feast
 name, a number the feast uses, a weekday that agrees with the answer, or a connecting word

@@ -18,7 +18,7 @@ import re
 
 __all__ = [
     'julian_easter', 'greg_easter', 'easter', 'easter_of',
-    'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year',
+    'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year', 'is_leap',
     'fmt', 'show', 'resolve', 'feast_date', 'FeastError',
     'FE', 'MON', 'DAY', 'SWITCH',
 ]
@@ -154,6 +154,11 @@ def cal_of_year(y, cal, m=None, d=None):
     return 'G' if (y, m, d or 1) >= (1700, 3, 1) else 'J'
 
 
+def is_leap(y, c):
+    """Whether ``y`` is a leap year in calendar ``c`` (``'J'`` or ``'G'``)."""
+    return y % 4 == 0 and (c == 'J' or y % 100 != 0 or y % 400 == 0)
+
+
 def to_ord(y, m, d, cal):
     """A fixed date -> ordinal, in the calendar in force on that day.
 
@@ -242,17 +247,53 @@ CHECK_WEEKDAY = {'sunday': 6, 'sonntag': 6, 'sonntags': 6, 'dominica': 6, 'domin
                  'dominicae': 6, 'saturday': 5, 'samstag': 5, 'sonnabend': 5, 'friday': 4,
                  'freitag': 4, 'thursday': 3, 'donnerstag': 3, 'wednesday': 2, 'mittwoch': 2}
 # Fixed feasts, so the weekday can be asked too. (month, day).
+#
+# A prefix with a space is a two-word name. It matches the two words in order, with only
+# connecting words between them (`Petri et Pauli`, `Inventio S. Crucis`), and it WINS over
+# a one-word name on either of its words: `Nativ. Mariae` is 8 Sep, not Christmas, and
+# `Mariae Himmelfahrt` is 15 Aug, not Ascension. Both orders are listed where registers
+# write both (`Mariae Geburt`, `Nativitas Mariae`).
 FIXED = [
     (('circumcis', 'neujahr'), (1, 1)),
+    (('pauli bekehr', 'bekehr pauli', 'convers pauli', 'pauli convers'), (1, 25)),
     (('purif', 'lichtmess'), (2, 2)),
+    # 25 Feb in a leap year: see LEAP_SHIFT.
+    (('matthia', 'mathia'), (2, 24)),
+    (('gregor',), (3, 12)),
     (('annunc', 'mari verk'), (3, 25)),
+    (('georg',), (4, 23)),
+    (('philipp jac', 'phil jac', 'walpurg'), (5, 1)),
+    (('kreuzerfind', 'kreuz erfind', 'invent cruc', 'cruc invent'), (5, 3)),
     (('johannis', 'joh bapt'), (6, 24)),
+    (('petri pauli', 'peter paul', 'pet paul'), (6, 29)),
+    (('visitat', 'heimsuch'), (7, 2)),
+    (('magdalen',), (7, 22)),
+    (('jacob',), (7, 25)),
+    (('laurent',), (8, 10)),
+    (('assumpt', 'mari himmelf', 'himmelf mari'), (8, 15)),
+    (('bartholom',), (8, 24)),
+    (('nativ mari', 'mari nativ', 'mari geburt', 'geburt mari'), (9, 8)),
+    (('kreuzerhoh', 'kreuz erhoh', 'exalt cruc', 'cruc exalt'), (9, 14)),
+    (('matthae', 'matthai', 'matthau', 'mathae', 'mathai'), (9, 21)),
     (('michael',), (9, 29)),
+    (('galli', 'gallus'), (10, 16)),
+    (('simon jud', 'sim jud'), (10, 28)),
+    (('omnium sanct', 'allerheilig'), (11, 1)),
+    (('omnium anim', 'allerseel'), (11, 2)),
     (('martini',), (11, 11)),
+    (('elisab',), (11, 19)),
     (('andreae', 'andreas'), (11, 30)),
+    (('thomae', 'thomas'), (12, 21)),
     (('nativ', 'christtag', 'weihnacht', 'christmas'), (12, 25)),
     (('stephan',), (12, 26)),
+    (('johannis evang', 'joh evang'), (12, 27)),
+    (('innocent', 'unschuld', 'kindlein'), (12, 28)),
 ]
+# A feast from 24 to 28 Feb moves one day later in a leap year. The Julian leap day was
+# counted in by doubling 24 Feb (the bissextile), so the feasts after it slid a day, and
+# the German almanacs, Protestant and Catholic, went on keeping Matthias on 25 Feb in a
+# leap year long after 1700. The leap year is the one of the calendar in force that day.
+LEAP_SHIFT = ((2, 24), (2, 28))
 # The German feasts kept over several days, counted as the 1st, 2nd and 3rd day of the
 # feast: `2. Ostertag` is Easter Monday. Each maps the stem of the compound to the word
 # the feast is recognised by.
@@ -275,7 +316,10 @@ FILLER = {'dom', 'dni', 'die', 'dies', 'festo', 'festum', 'fest', 'festi', 'feas
           'in', 'am', 'an', 'den', 'der', 'dem', 'des', 'd', 'the', 'of', 'war', 'als', 'ipso',
           'mariae', 'maria', 'marie', 'christi', 's', 'st', 'sancti', 'sankt', 'heil', 'hl',
           'heiligen', 'mihi', 'geniti', 'et', 'und'}
-FILLER_PREFIXES = ('domin', 'jucund', 'bapt')
+# The saint's epithet: `Andreae Apost.`, `Michaelis Archangeli`. `evang` is one too, except
+# in `Johannis Evang.`, where the two-word name takes it first.
+FILLER_PREFIXES = ('domin', 'jucund', 'bapt', 'apost', 'evang', 'archang', 'martyr', 'virg',
+                   'episc')
 # Words that belong to a numbered Sunday AFTER a feast: `Dom. 5. p. Epiph.`
 POST = {'post', 'p', 'after', 'nach'}
 # Latin and English ordinal endings, and the German ones: `2te`, `3ten`, `2t`.
@@ -352,7 +396,32 @@ def _feasts(words):
     def add(key, i):
         found.setdefault(key, set()).add(i)
 
+    def filler(w):
+        return w in FILLER or starts(w, FILLER_PREFIXES)
+
+    # Two-word names first (`Mariae Verk.`, `Joh. Bapt.`, `Petri et Pauli`). The words they
+    # take are not read again on their own, so `Nativ. Mariae` is not also Christmas.
+    taken = set()
+    for k, (prefixes, _md) in enumerate(FIXED):
+        for p in prefixes:
+            if ' ' not in p:
+                continue
+            a, b = p.split(' ', 1)
+            for i, w in enumerate(words):
+                if not w.startswith(a):
+                    continue
+                for j in range(i + 1, len(words)):
+                    if words[j].startswith(b):
+                        add(('fixed', k), i)
+                        add(('fixed', k), j)
+                        taken.update((i, j))
+                        break
+                    if not filler(words[j]):
+                        break
+
     for i, w in enumerate(words):
+        if i in taken:
+            continue
         if starts(w, TRIN):
             add(('trin', None), i)
         elif starts(w, ADV):
@@ -369,15 +438,6 @@ def _feasts(words):
                     if starts(w, [p for p in prefixes if ' ' not in p]):
                         add(('fixed', k), i)
                         break
-    # Two-word names: `Mariae Verk.`, `Joh. Bapt.`
-    for k, (prefixes, _md) in enumerate(FIXED):
-        for p in prefixes:
-            if ' ' in p:
-                a, b = p.split(' ', 1)
-                for i in range(len(words) - 1):
-                    if words[i].startswith(a) and words[i + 1].startswith(b):
-                        add(('fixed', k), i)
-                        add(('fixed', k), i + 1)
     return found
 
 
@@ -497,8 +557,12 @@ def resolve(text, year=None, cal='P'):
             o = easter_of(year, cal) + off
         else:
             prefixes, (m, d) = FIXED[key]
+            leap = (LEAP_SHIFT[0] <= (m, d) <= LEAP_SHIFT[1]
+                    and is_leap(year, cal_of_year(year, cal, m, d)))
+            d += leap
             o = to_ord(year, m, d, cal)
-        hit = words[min(found[(kind, key)])] if kind == 'easter' else 'fixed feast %d %s' % (d, MON[m - 1])
+        hit = (words[min(found[(kind, key)])] if kind == 'easter' else
+               'fixed feast %d %s%s' % (d, MON[m - 1], ', leap year' if leap else ''))
         extra = 0
         if feria:
             refuse_unless(kind == 'easter', 'feria counts from a movable feast')

@@ -345,3 +345,96 @@ def test_day_of_the_feast_cli(capsys):
     assert 'Mon 3 Apr 1747 (Gregorian)' in capsys.readouterr().out
     assert main(['2. Ostern 1747']) == 2
     assert 'not used' in capsys.readouterr().err
+
+
+# Saints' days (#4). Each spelling lands on its (month, day), in a common year.
+@pytest.mark.parametrize('text, md', [
+    ('Pauli Bekehrung', (1, 25)), ('Bekehrung Pauli', (1, 25)), ('Conversio S. Pauli', (1, 25)),
+    ('Matthiae Apost.', (2, 24)), ('Matthias', (2, 24)), ('Mathiae', (2, 24)),
+    ('Gregorii', (3, 12)), ('Georgii', (4, 23)), ('Georgi', (4, 23)),
+    ('Philippi Jacobi', (5, 1)), ('Philippi et Jacobi', (5, 1)), ('Phil. Jac.', (5, 1)),
+    ('Walpurgis', (5, 1)),
+    ('Kreuzerfindung', (5, 3)), ('Inventio S. Crucis', (5, 3)),
+    ('Petri et Pauli', (6, 29)), ('Petri Pauli', (6, 29)), ('Peter und Paul', (6, 29)),
+    ('Visitationis Mariae', (7, 2)), ('Mariä Heimsuchung', (7, 2)),
+    ('Mariae Magdalenae', (7, 22)), ('Jacobi Apost.', (7, 25)), ('Laurentii Martyr.', (8, 10)),
+    ('Assumptionis Mariae', (8, 15)), ('Mariä Himmelfahrt', (8, 15)),
+    ('Himmelfahrt Mariae', (8, 15)),
+    ('Bartholomaei', (8, 24)), ('Bartholomäi', (8, 24)),
+    ('Nativ. Mariae', (9, 8)), ('Mariae Geburt', (9, 8)),
+    ('Kreuzerhöhung', (9, 14)), ('Exaltatio Crucis', (9, 14)),
+    ('Matthaei Apost. et Evang.', (9, 21)), ('Matthäi', (9, 21)), ('Matthäus', (9, 21)),
+    ('Michaelis Archangeli', (9, 29)), ('Galli', (10, 16)),
+    ('Simonis et Judae', (10, 28)), ('Simon Juda', (10, 28)),
+    ('Omnium Sanctorum', (11, 1)), ('Allerheiligen', (11, 1)),
+    ('Omnium Animarum', (11, 2)), ('Allerseelen', (11, 2)),
+    ('Elisabethae', (11, 19)), ('Andreae Apost.', (11, 30)), ('Thomae Apost.', (12, 21)),
+    ('Johannis Evang.', (12, 27)), ('Joh. Evangelistae', (12, 27)),
+    ('Innocentium', (12, 28)), ('Unschuldige Kindlein', (12, 28)),
+])
+@pytest.mark.parametrize('year, cal', [(1681, 'P'), (1735, 'P'), (1681, 'G')])
+def test_saints_days(text, md, year, cal):
+    assert resolve(text, year, cal)[0] == to_ord(year, *md, cal)
+
+
+@pytest.mark.parametrize('text, want', [
+    # The St Bartholomew's Day massacre began on Sunday 24 Aug 1572.
+    ('Bartholomaei 1572', 'Sun 24 Aug 1572 (Julian)'),
+    # Luther's theses, 31 Oct 1517, were the eve of All Saints: a Saturday.
+    ('Omnium Sanctorum 1517', 'Sun 1 Nov 1517 (Julian)'),
+])
+def test_saints_days_anchor(text, want):
+    assert feast_date(text) == want
+
+
+# For each pair the two-word name wins, and the one word alone keeps its old meaning.
+@pytest.mark.parametrize('two, one', [
+    (('Nativ. Mariae', (9, 8)), ('Nativ.', (12, 25))),
+    (('Mariae Himmelfahrt', (8, 15)), ('Christi Himmelfahrt', None)),
+    (('Johannis Evang.', (12, 27)), ('Johannis', (6, 24))),
+    (('Philippi Jacobi', (5, 1)), ('Jacobi', (7, 25))),
+    (('Matthiae', (2, 24)), ('Matthaei', (9, 21))),
+])
+def test_collisions(two, one):
+    yr = 1681
+    assert resolve(two[0], yr)[0] == to_ord(yr, *two[1], 'P')
+    want = easter(yr) + FE['Ascension'] if one[1] is None else to_ord(yr, *one[1], 'P')
+    assert resolve(one[0], yr)[0] == want
+
+
+# Matthias is 25 Feb in a leap year, by the leap year of the calendar in force that day.
+@pytest.mark.parametrize('text, cal, want', [
+    ('Matthiae 1680', 'P', 'Wed 25 Feb 1680 (Julian)'),
+    ('Matthiae 1681', 'P', 'Thu 24 Feb 1681 (Julian)'),
+    ('Matthiae 1704', 'P', 'Mon 25 Feb 1704 (Gregorian)'),
+    ('Matthiae 1800', 'P', 'Mon 24 Feb 1800 (Gregorian)'),   # no Gregorian leap day
+    ('Matthiae 1800', 'J', 'Sat 25 Feb 1800 (Julian)'),      # a Julian leap year
+    ('Matthiae 1600', 'G', 'Fri 25 Feb 1600 (Gregorian)'),
+])
+def test_matthias_leap_day(text, cal, want):
+    assert feast_date(text, cal=cal) == want
+
+
+def test_matthias_leap_day_is_labelled():
+    assert resolve('Matthiae 1680')[1] == 'fixed feast 25 Feb, leap year'
+    assert resolve('Matthiae 1681')[1] == 'fixed feast 24 Feb'
+
+
+def test_matthias_1700_did_not_happen_in_the_protestant_estates():
+    # 18 Feb 1700 (Julian) was followed by 1 Mar 1700.
+    with pytest.raises(FeastError, match='does not exist in the Protestant calendar'):
+        resolve('Matthiae 1700')
+
+
+@pytest.mark.parametrize('bad, why', [
+    ('Pauli 1680', 'no feast'),                     # Paul alone is no feast day
+    ('Petri 1680', 'no feast'),
+    ('Mariae 1680', 'no feast'),
+    ('Johannis Jacobi 1680', 'more than one feast'),
+    ('Petri Jahr Pauli 1680', 'unrecognised'),      # only connecting words may sit between
+    ('2. Bartholomaei 1680', 'not used'),
+])
+def test_saints_days_refused(bad, why):
+    with pytest.raises(FeastError) as e:
+        resolve(bad)
+    assert why.lower() in str(e.value).lower()

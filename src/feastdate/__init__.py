@@ -6,14 +6,14 @@
 """
 from .core import (  # noqa: F401
     DAY, FE, MON, SWITCH, FeastError, cal_of_year, easter, easter_of, feast_date, fmt,
-    g2o, greg_easter, j2o, julian_easter, o2g, o2j, resolve, show, to_ord,
+    g2o, greg_easter, is_leap, j2o, julian_easter, o2g, o2j, resolve, show, to_ord,
 )
 
-__version__ = '1.0.6'
+__version__ = '1.1.0'
 
 __all__ = [
     'feast_date', 'resolve', 'show', 'FeastError',
     'easter', 'easter_of', 'julian_easter', 'greg_easter',
-    'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year', 'fmt',
+    'j2o', 'o2j', 'g2o', 'o2g', 'to_ord', 'cal_of_year', 'is_leap', 'fmt',
     'FE', 'MON', 'DAY', 'SWITCH', '__version__',
 ]
