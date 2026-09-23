@@ -115,6 +115,10 @@ def test_the_1700_switch():
     ('Fer. 9. Pasch. 1680', '^feria counts the days of the week, 1 to 7, not 9'),
     ('Fer. 0. Pent. 1680', '^feria counts the days of the week, 1 to 7, not 0'),
     ('Fer. 8. Trin. 1680', '^feria counts the days of the week, 1 to 7, not 8'),
+    # With a weekday feast the feria names the feast's own weekday, not an offset (#3).
+    ('Fer. 2. Ascens. 1680', '^feria 2 does not fall on ascens, a Thursday'),
+    ('Feria 2 in Parasceve 1680', '^feria 2 does not fall on parasceve, a Friday'),
+    ('Feria 6 in Coena Domini 1680', '^feria 6 does not fall on coena, a Thursday'),
 ])
 def test_refused(bad, why):
     # Anchored on each branch's own wording: the catch-all quotes the input back, so a
@@ -283,6 +287,12 @@ def test_cal_of_year_answers_for_the_day():
     ('2. Christtag 1740', 'Mon 26 Dec 1740 (Gregorian)'),
     ('Feria secunda Paschatos 1740', 'Mon 18 Apr 1740 (Gregorian)'),
     ('Fer. tertia Pent. 1740', 'Tue 7 Jun 1740 (Gregorian)'),
+    # A weekday feast: the feria is the feast's own weekday and adds nothing (#3).
+    ('Feria 6 in Parasceve 1680', 'Fri 9 Apr 1680 (Julian)'),
+    ('Feria sexta in Parasceve 1680', 'Fri 9 Apr 1680 (Julian)'),
+    ('Feria V in Coena Domini 1680', 'Thu 8 Apr 1680 (Julian)'),
+    ('Feria quinta in Coena Domini 1680', 'Thu 8 Apr 1680 (Julian)'),
+    ('Fer. 5. Ascens. 1680', 'Thu 20 May 1680 (Julian)'),
 ])
 def test_day_of_the_feast(text, want):
     assert feast_date(text) == want
