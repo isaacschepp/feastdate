@@ -58,9 +58,34 @@ def test_trinity_ordinals(year):
 def test_every_sunday_is_a_sunday(cal):
     """Across both calendars and the 1700 switch."""
     for yr in range(1600, 1800):
-        for name in ('Dom. 1. Adv.', 'Dom. 4. Adv.', 'Dom. 5. p. Epiph.', 'Dom. Palm.',
-                     'Dom. 27. Trin.'):
+        for name in ('Dom. 1. Adv.', 'Dom. 4. Adv.', 'Dom. 1. p. Epiph.', 'Dom. Palm.',
+                     'Dom. 22. Trin.'):
             assert resolve(name, yr, cal)[0] % 7 == 6, (name, yr, cal)
+
+
+def _sundays(name, yr, cal):
+    """The ordinals ``name`` (with ``{}`` for the number) resolves to, for n = 0 to 39."""
+    out = []
+    for n in range(40):
+        try:
+            out.append(resolve(name.format(n), yr, cal)[0])
+        except FeastError:
+            pass
+    return out
+
+
+@pytest.mark.parametrize('cal', ['P', 'G', 'J'])
+def test_numbered_sundays_end_where_the_next_season_begins(cal):
+    """Every year has 22 to 27 Sundays after Trinity, the last a week before Advent 1, and
+    1 to 6 after Epiphany, the last a week before Septuagesima. No other number resolves."""
+    for yr in range(1600, 1800):
+        trin = _sundays('Dom. {}. Trin.', yr, cal)
+        assert 22 <= len(trin) <= 27, (yr, cal, len(trin))
+        assert trin[-1] + 7 == resolve('Dom. 1. Adv.', yr, cal)[0], (yr, cal)
+        epi = _sundays('Dom. {}. p. Epiph.', yr, cal)
+        assert 1 <= len(epi) <= 6, (yr, cal, len(epi))
+        assert epi[-1] + 7 == resolve('Septuag.', yr, cal)[0], (yr, cal)
+        assert all(o % 7 == 6 for o in trin + epi), (yr, cal)
 
 
 @pytest.mark.parametrize('year', [1650, 1699, 1700, 1750])
@@ -80,6 +105,16 @@ def test_the_1700_switch():
     ('Dom XV post 1656', '^"post" with no feast named'),
     ('Dom. 1656', '^no feast recognised in '),
     ('Dom. 5. Adv. 1656', '^Advent needs its Sunday'),
+    # A misread numeral must not answer a Sunday of the next season.
+    ('Dom. 28. Trin. 1680', '^there were 24 Sundays after Trinity in 1680, not 28'),
+    ('Dom. 25. Trin. 1680', '^there were 24 Sundays after Trinity in 1680, not 25'),
+    ('Dom. 0. Trin. 1680', '^there were 24 Sundays after Trinity in 1680, not 0'),
+    ('Dom. 7. p. Epiph. 1680', '^there were 4 Sundays after Epiphany in 1680, not 7'),
+    ('Dom. 5. p. Epiph. 1680', '^there were 4 Sundays after Epiphany in 1680, not 5'),
+    ('Dom. 0. p. Epiph. 1680', '^there were 4 Sundays after Epiphany in 1680, not 0'),
+    ('Fer. 9. Pasch. 1680', '^feria counts the days of the week, 1 to 7, not 9'),
+    ('Fer. 0. Pent. 1680', '^feria counts the days of the week, 1 to 7, not 0'),
+    ('Fer. 8. Trin. 1680', '^feria counts the days of the week, 1 to 7, not 8'),
 ])
 def test_refused(bad, why):
     # Anchored on each branch's own wording: the catch-all quotes the input back, so a
@@ -124,6 +159,21 @@ def test_cli_easter(capsys):
 def test_cli_error(capsys):
     assert main(['Dom. Palm.']) == 2
     assert 'no year' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('short', ['5', '30', '0'])
+def test_cli_short_separate_number_is_an_ordinal(short, capsys):
+    """A separate year needs three digits; a shorter last word stays an ordinal, and the
+    error says so rather than leave "no year" unexplained."""
+    assert main(['Dom. Palm.', short]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith('feastdate: no year')
+    assert 'three digits or more, 100 to 9999; %s is read as an ordinal' % short in err
+
+
+def test_cli_three_digit_separate_year(capsys):
+    assert main(['Dom. Palm.', '500']) == 0
+    assert capsys.readouterr().out == 'Dom. Palm. 500 = Sun 26 Mar 500 (Julian)   [palm]\n'
 
 
 def test_cli_unknown_flag():

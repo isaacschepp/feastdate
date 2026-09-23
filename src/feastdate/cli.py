@@ -15,7 +15,7 @@ EPILOG = """examples:
 
 default calendar: Julian to 1699, the Protestant Improved Calendar from 1700.
 a year inside the text is read only from 1500 to 1899; give any other year
-(1 to 9999) as the last argument."""
+(100 to 9999) as the last argument. --easter takes any year from 1 to 9999."""
 
 YEAR_MIN, YEAR_MAX = 1, 9999
 
@@ -65,7 +65,8 @@ def main(argv=None):
     words, year = list(args.text), None
     # A separate trailing year is passed as the year, not left to resolve()'s in-text
     # 1500-1899 window, so "feastdate 'Dom. 9. Trin.' 1950" works. Ordinals never reach
-    # three digits, so a three-digit-or-longer last word is always a year.
+    # three digits, so a three-digit-or-longer last word is always a year. A shorter one
+    # stays an ordinal: read as a year, "Dom. Trin." 9 would answer for AD 9 in silence.
     if len(words) > 1 and re.fullmatch(r'\d{3,}', words[-1].strip()):
         try:
             year = year_arg(words.pop())
@@ -75,7 +76,12 @@ def main(argv=None):
     try:
         o, what = resolve(text, year, args.cal)
     except FeastError as e:
-        print('feastdate: %s' % e, file=sys.stderr)
+        msg = str(e)
+        if (year is None and msg.startswith('no year') and len(words) > 1
+                and re.fullmatch(r'\d{1,2}', words[-1].strip())):
+            msg += ('\n(a separate year needs three digits or more, 100 to 9999; '
+                    '%s is read as an ordinal)' % words[-1].strip())
+        print('feastdate: %s' % msg, file=sys.stderr)
         return 2
     # The year the text already carries (resolve() refused any other) is not repeated.
     if year is None or re.search(r'(?<!\d)%d(?!\d)' % year, text):

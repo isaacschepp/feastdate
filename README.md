@@ -49,7 +49,9 @@ Dom. 1. Adv. 1650 = Sun 27 Nov 1650 (Gregorian)   [1. Sunday of Advent]
 
 You can put the year in the text or give it as a separate argument. A year inside the text
 is recognised from 1500 to 1899, so that a number such as the `9` in `Dom. 9. Trin.` is read as
-an ordinal. Give any other year, from 1 to 9999, as a separate last argument. The bracketed part of
+an ordinal. Give any other year, from 100 to 9999, as a separate last argument: a shorter
+number there is still read as an ordinal, since `feastdate "Dom. Trin." 9` could mean either.
+(`--easter` takes any year from 1 to 9999, and so does the `year` argument of the Python API.) The bracketed part of
 the output shows what the parser recognised, so you can check it read the entry the way you
 meant. If it recognises nothing, it prints an error and exits with status 2.
 
@@ -162,11 +164,19 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
   after Trinity.
 * `Dom. 1. Adv.` to `Dom. 4. Adv.` give the Sundays of Advent, counted back from Christmas.
 * `Dom. 5. p. Epiph.` gives the *n*th Sunday after Epiphany. `Epiphany` alone gives 6 January.
+* The count is checked against the year. The Sundays after Trinity run up to Advent, so a year
+  has 22 to 27 of them, and the Sundays after Epiphany run up to Septuagesima, 1 to 6. A
+  Sunday the year did not have is refused, not carried into Advent or Lent:
+
+  ```console
+  $ feastdate "Dom. 26. Trin. 1680"
+  feastdate: there were 24 Sundays after Trinity in 1680, not 26 in 'Dom. 26. Trin. 1680'
+  ```
 
 **Weekdays after a feast:**
 
 * `Fer. 2. Pent.`, `Feria 2da Paschat.` and `Fer. 3. Pasch.` use the feria count, where 2 is
-  Monday and 3 is Tuesday.
+  Monday and 3 is Tuesday. A feria outside 1 to 7 is refused.
 * `Whit Monday`, `Easter Tuesday`, `Ostermontag` and `Pfingstdienstag` are also understood,
   with the weekday written as part of the word or as a separate word.
 * `Feria secunda`, `Fer. tertia` spell the number out; `prima` to `quarta` are understood.

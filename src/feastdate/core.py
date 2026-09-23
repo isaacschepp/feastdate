@@ -332,6 +332,12 @@ def starts(tok, prefixes):
     return any(tok.startswith(p) for p in prefixes)
 
 
+def _advent1(year, cal):
+    """Ordinal of the first Sunday of Advent: the fourth Sunday before Christmas Day."""
+    xmas = to_ord(year, 12, 25, cal)
+    return xmas - 1 - ((xmas - 1 - 6) % 7) - 21
+
+
 class FeastError(ValueError):
     """The text names no feast, no year, or an impossible one (``Dom. 5. Adv.``), or
     carries a word or number the parser cannot account for (``2. Ostern``)."""
@@ -447,6 +453,7 @@ def resolve(text, year=None, cal='P'):
         refuse_unless(tag and not feria, '"letzter" names the last day of a feast (letzter Ostertag)')
     if feria:
         refuse_unless(n is not None, 'feria needs its number (Fer. 2. Pent.)')
+        refuse_unless(1 <= n <= 7, 'feria counts the days of the week, 1 to 7, not %d' % n)
     if post:
         refuse_unless(kind in ('trin', 'epiph') and n is not None and not feria,
                       '"%s" belongs to a numbered Sunday after Trinity or Epiphany' % words[post[0]])
@@ -461,13 +468,15 @@ def resolve(text, year=None, cal='P'):
             o = base + ((n - 1) if feria else 0)
             what = 'Trinity Sunday' if n is None else 'Trinity feria %d' % n
         else:
+            # The Sundays after Trinity run up to Advent: 22 to 27 of them, by the year.
+            last_trin = (_advent1(year, cal) - 1 - base) // 7
+            refuse_unless(1 <= n <= last_trin, 'there were %d Sundays after Trinity in %d, not %d'
+                          % (last_trin, year, n))
             o, what = base + 7 * n, '%d. Sunday after Trinity' % n
     elif kind == 'adv':
         if n is None or not 1 <= n <= 4 or feria or tag:
             raise FeastError('Advent needs its Sunday, 1 to 4')
-        xmas = to_ord(year, 12, 25, cal)
-        adv4 = xmas - 1 - ((xmas - 1 - 6) % 7)     # the last Sunday before Christmas Day
-        o, what = adv4 - 7 * (4 - n), '%d. Sunday of Advent' % n
+        o, what = _advent1(year, cal) + 7 * (n - 1), '%d. Sunday of Advent' % n
     elif kind == 'epiph':
         refuse_unless(not feria and not tag, 'a number with Epiphany counts the Sundays after it')
         epi = to_ord(year, 1, 6, cal)
@@ -475,6 +484,10 @@ def resolve(text, year=None, cal='P'):
             o, what = epi, 'Epiphany'
         else:
             first = epi + 1 + ((6 - (epi + 1)) % 7)     # the first Sunday after 6 Jan
+            # The Sundays after Epiphany run up to Septuagesima: 1 to 6 of them, by the year.
+            last_epi = (easter_of(year, cal) - 63 - 1 - first) // 7 + 1
+            refuse_unless(1 <= n <= last_epi, 'there were %d Sundays after Epiphany in %d, not %d'
+                          % (last_epi, year, n))
             o, what = first + 7 * (n - 1), '%d. Sunday after Epiphany' % n
     else:
         if kind == 'easter':
