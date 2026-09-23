@@ -169,6 +169,17 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
   Monday and 3 is Tuesday.
 * `Whit Monday`, `Easter Tuesday`, `Ostermontag` and `Pfingstdienstag` are also understood,
   with the weekday written as part of the word or as a separate word.
+* `Feria secunda`, `Fer. tertia` spell the number out; `prima` to `quarta` are understood.
+
+**Days of a German feast:** Easter, Whitsun and Christmas were kept over several days, and
+German registers count them:
+
+* `2. Ostertag`, `der 2te Ostertag`, `2ter` or `zweiter Ostertag` is Easter Monday, and
+  `3. Ostertag` or `der dritte Ostertag` is Easter Tuesday. `Osterfeiertag` and `Oster Tag`
+  are the same.
+* `2. Pfingsttag` is Whit Monday. `2. Weihnachtstag` and `2. Christtag` are 26 December.
+* `letzter Ostertag` is the third day, as the registers use it.
+* A feast was kept three days at most, so `4. Ostertag` is refused.
 
 **Fixed feasts** give you the weekday too:
 
@@ -183,6 +194,23 @@ its **beginning**, so `Reminisc.`, `Reminisc:` and `Reminiscere` all mean the sa
 | St Andrew | 30 Nov | `andreae`, `andreas` |
 | Christmas | 25 Dec | `nativ`, `christtag`, `weihnacht`, `christmas` |
 | St Stephen | 26 Dec | `stephan` |
+
+**Nothing is skipped.** Every word and number in the text must be accounted for: a feast
+name, a number the feast uses, a weekday that agrees with the answer, or a connecting word
+(`Dom.`, `Festo`, `post`, `der`, `Domini` and the like). Anything else is an error, never
+dropped, so the answer is not a plausible date that ignored part of what you typed:
+
+```console
+$ feastdate "2. Ostern 1747"
+feastdate: the number 2 is not used by ostern in '2. Ostern 1747': a day of the feast is written "2. Ostertag" or "Fer. 2. Pasch."
+
+$ feastdate "Dom. Oculi = 4 March 1638"
+feastdate: unrecognised word in 'Dom. Oculi = 4 March 1638': march
+```
+
+Pass the feast name alone, not the whole sentence around it. A weekday word is a check:
+`Good Friday` must fall on a Friday, and `Dominica Viridium` is refused, because Maundy
+Thursday is not a Sunday.
 
 A year written in the text must fall between 1500 and 1899, so that other numbers are read as
 ordinals. The `year` argument accepts any year.

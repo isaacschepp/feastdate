@@ -200,8 +200,13 @@ def show(o, cal):
 
 # ---------------------------------------------------------------------------------------
 # Parsing a feast name. Each entry is (prefixes, days from Easter Sunday). A token matches
-# when it STARTS WITH a prefix, so `Reminisc.`, `Reminiscere` and `Reminisc:` all land on
+# when it STARTS WITH a prefix, so `Reminisc.`, `Reminisc:` and `Reminiscere` all land on
 # the same row. Longer, more specific prefixes come first.
+#
+# Every word of the text must be accounted for: a feast name, a number the feast uses, a
+# weekday that agrees with the answer, or one of the connecting words below. Anything else
+# is refused. A parser that skips what it does not understand answers "2. Ostertag" with
+# Easter Sunday, a plausible date with nothing to say it is wrong.
 
 EASTER_REL = [
     (('septuag',), -63),
@@ -231,11 +236,15 @@ EPIPH = ('epiph',)
 FERIA = ('feria', 'fer')
 # Weekday words English transcriptions use after a feast name: `Whit Monday`.
 WEEKDAY_WORDS = {'monday': 1, 'tuesday': 2, 'montag': 1, 'dienstag': 2}
+# Weekday words that only say which day the feast fell on. The answer must agree.
+CHECK_WEEKDAY = {'sunday': 6, 'sonntag': 6, 'sonntags': 6, 'dominica': 6, 'dominicam': 6,
+                 'dominicae': 6, 'saturday': 5, 'samstag': 5, 'sonnabend': 5, 'friday': 4,
+                 'freitag': 4, 'thursday': 3, 'donnerstag': 3, 'wednesday': 2, 'mittwoch': 2}
 # Fixed feasts, so the weekday can be asked too. (month, day).
 FIXED = [
     (('circumcis', 'neujahr'), (1, 1)),
     (('purif', 'lichtmess'), (2, 2)),
-    (('annunc', 'mariae verk'), (3, 25)),
+    (('annunc', 'mari verk'), (3, 25)),
     (('johannis', 'joh bapt'), (6, 24)),
     (('michael',), (9, 29)),
     (('martini',), (11, 11)),
@@ -243,6 +252,32 @@ FIXED = [
     (('nativ', 'christtag', 'weihnacht', 'christmas'), (12, 25)),
     (('stephan',), (12, 26)),
 ]
+# The German feasts kept over several days, counted as the 1st, 2nd and 3rd day of the
+# feast: `2. Ostertag` is Easter Monday. Each maps the stem of the compound to the word
+# the feast is recognised by.
+DAY_STEMS = {'oster': 'oster', 'pfingst': 'pfingst', 'weihnacht': 'weihnacht',
+             'weihnachts': 'weihnacht', 'christ': 'christtag'}
+DAY_SUFFIXES = ('feiertag', 'festtag', 'tage', 'tag')
+# The feasts `2. Ostertag` counts the days of: Easter, Pentecost, Christmas.
+DAY_FEASTS = {('easter', next(k for k, (p, _o) in enumerate(EASTER_REL) if 'oster' in p)),
+              ('easter', next(k for k, (p, _o) in enumerate(EASTER_REL) if 'pfingst' in p)),
+              ('fixed', next(k for k, (p, _md) in enumerate(FIXED) if 'weihnacht' in p))}
+FEAST_DAYS = 3              # the most days any feast was kept; 'letzter' is the third
+# Ordinals written out. The register writes `der dritte Ostertag`, `Feria secunda`.
+ORD_WORDS = [(r'(?:erst|zweit|dritt|viert)(?:e|er|en|es|em)?', ('erst', 'zweit', 'dritt', 'viert')),
+             (r'(?:prim|secund|terti|quart)(?:a|o|ae|am|us|um|i)?', ('prim', 'secund', 'terti', 'quart')),
+             (r'(?:first|second|third|fourth)', ('first', 'second', 'third', 'fourth'))]
+LAST_RE = r'letzt(?:e|er|en|es|em)?'
+# Words that connect a feast name to the rest of the entry and add nothing to the date.
+FILLER = {'dom', 'dni', 'die', 'dies', 'festo', 'festum', 'fest', 'festi', 'feast', 'day',
+          'in', 'am', 'an', 'den', 'der', 'dem', 'des', 'd', 'the', 'of', 'war', 'als', 'ipso',
+          'mariae', 'maria', 'marie', 'christi', 's', 'st', 'sancti', 'sankt', 'heil', 'hl',
+          'heiligen', 'mihi', 'geniti', 'et', 'und'}
+FILLER_PREFIXES = ('domin', 'jucund', 'bapt')
+# Words that belong to a numbered Sunday AFTER a feast: `Dom. 5. p. Epiph.`
+POST = {'post', 'p', 'after', 'nach'}
+# Latin and English ordinal endings, and the German ones: `2te`, `3ten`, `2t`.
+NUM_RE = r'(\d+)(?:st|nd|rd|th|da|ma|tia|ta|to|a|o|ten|ter|tes|tem|te|t|en|er|e)?'
 ROMAN = {'i': 1, 'v': 5, 'x': 10, 'l': 50}
 
 
@@ -256,6 +291,14 @@ def roman(tok):
         total = total - v if v < prev else total + v
         prev = max(prev, v)
     return total if 0 < total <= 27 else None
+
+
+def ord_word(tok):
+    """`dritte` / `secunda` / `third` -> 3, else None."""
+    for pat, stems in ORD_WORDS:
+        if re.fullmatch(pat, tok):
+            return next(i for i, s in enumerate(stems, 1) if tok.startswith(s))
+    return None
 
 
 def tokens(text):
@@ -274,12 +317,60 @@ def split_weekday(tok):
     return [tok]
 
 
+def split_day(tok):
+    """`ostertag` -> ['oster', 'tag'], so that `2. Ostertag` can count the day of the feast.
+    A bare `Tag` / `Feiertag` is the marker alone. Other words are left whole."""
+    for suf in DAY_SUFFIXES:
+        if tok == suf:
+            return ['tag']
+        if tok.endswith(suf) and tok[:-len(suf)] in DAY_STEMS:
+            return [DAY_STEMS[tok[:-len(suf)]], 'tag']
+    return [tok]
+
+
 def starts(tok, prefixes):
     return any(tok.startswith(p) for p in prefixes)
 
 
 class FeastError(ValueError):
-    """The text names no feast, no year, or an impossible one (``Dom. 5. Adv.``)."""
+    """The text names no feast, no year, or an impossible one (``Dom. 5. Adv.``), or
+    carries a word or number the parser cannot account for (``2. Ostern``)."""
+
+
+def _feasts(words):
+    """{(kind, key): set of word indexes} for every feast any word names."""
+    found = {}
+
+    def add(key, i):
+        found.setdefault(key, set()).add(i)
+
+    for i, w in enumerate(words):
+        if starts(w, TRIN):
+            add(('trin', None), i)
+        elif starts(w, ADV):
+            add(('adv', None), i)
+        elif starts(w, EPIPH):
+            add(('epiph', None), i)
+        else:
+            for k, (prefixes, _off) in enumerate(EASTER_REL):
+                if starts(w, prefixes):
+                    add(('easter', k), i)
+                    break
+            else:
+                for k, (prefixes, _md) in enumerate(FIXED):
+                    if starts(w, [p for p in prefixes if ' ' not in p]):
+                        add(('fixed', k), i)
+                        break
+    # Two-word names: `Mariae Verk.`, `Joh. Bapt.`
+    for k, (prefixes, _md) in enumerate(FIXED):
+        for p in prefixes:
+            if ' ' in p:
+                a, b = p.split(' ', 1)
+                for i in range(len(words) - 1):
+                    if words[i].startswith(a) and words[i + 1].startswith(b):
+                        add(('fixed', k), i)
+                        add(('fixed', k), i + 1)
+    return found
 
 
 def resolve(text, year=None, cal='P'):
@@ -287,12 +378,16 @@ def resolve(text, year=None, cal='P'):
 
     Any number from 1500 to 1899 in the text is taken as the year; other numbers, Arabic
     or Roman, are the ordinal (``Dom. 9. Trin.``, ``Dom XXIII post Trin.``, ``Fer. 2.``).
-    Raises :class:`FeastError` when nothing can be resolved.
+    An ordinal before a German feast day counts the day of the feast: ``2. Ostertag`` and
+    ``der dritte Pfingsttag`` are Easter Monday and Whit Tuesday.
+
+    Raises :class:`FeastError` when nothing can be resolved, and when any word or number
+    in the text is not accounted for, rather than resolve the rest and drop it.
     """
     toks = tokens(text)
-    nums, words = [], []
+    nums, words, last = [], [], False
     for w in toks:
-        m = re.fullmatch(r'(\d+)(?:st|nd|rd|th|da|ma|tia|ta|to|a|o)?', w)
+        m = re.fullmatch(NUM_RE, w)
         if m:
             n = int(m.group(1))
             if 1500 <= n <= 1899:
@@ -302,55 +397,115 @@ def resolve(text, year=None, cal='P'):
             else:
                 nums.append(n)
             continue
-        r = roman(w)
+        r = roman(w) or ord_word(w)
         if r is not None:
             nums.append(r)
             continue
-        words.extend(split_weekday(w))
+        if re.fullmatch(LAST_RE, w):
+            last = True
+            continue
+        for part in split_weekday(w):
+            words.extend(split_day(part))
     if year is None:
         raise FeastError('no year: give one, e.g. "Dom. Palm. 1656"')
-    n = nums[0] if nums else None
+    if len(nums) + last > 1:
+        raise FeastError('more than one ordinal in %r' % text)
+    n = FEAST_DAYS if last else (nums[0] if nums else None)
 
-    def has(prefixes):
-        return any(starts(w, prefixes) for w in words)
+    found = _feasts(words)
+    if len(found) > 1:
+        names = sorted({words[min(ix)] for ix in found.values()})
+        raise FeastError('more than one feast named in %r: %s' % (text, ', '.join(names)))
+    feria = [i for i, w in enumerate(words) if starts(w, FERIA)
+             and not any(i in ix for ix in found.values())]
+    post = [i for i, w in enumerate(words) if w in POST]
+    tag = [i for i, w in enumerate(words) if w == 'tag']
+    shift = [i for i, w in enumerate(words) if w in WEEKDAY_WORDS]
+    check = [i for i, w in enumerate(words) if w in CHECK_WEEKDAY]
+    used = set(feria) | set(tag) | set(check)
+    for ix in found.values():
+        used |= ix
+    unknown = [w for i, w in enumerate(words)
+               if i not in used and i not in post and i not in shift
+               and w not in FILLER and not starts(w, FILLER_PREFIXES)]
 
-    is_feria = has(FERIA)
+    if not found:
+        if n is not None and post:
+            raise FeastError('"post" with no feast named: say which (Trin., Epiph.)')
+        raise FeastError('no feast recognised in %r%s' % (
+            text, ' (unrecognised: %s)' % ', '.join(unknown) if unknown else ''))
+    if unknown:
+        raise FeastError('unrecognised word%s in %r: %s' % (
+            's' if len(unknown) > 1 else '', text, ', '.join(unknown)))
+    (kind, key), = found
 
-    if has(TRIN):
+    def refuse_unless(ok, why):
+        if not ok:
+            raise FeastError('%s in %r' % (why, text))
+
+    if last:
+        refuse_unless(tag and not feria, '"letzter" names the last day of a feast (letzter Ostertag)')
+    if feria:
+        refuse_unless(n is not None, 'feria needs its number (Fer. 2. Pent.)')
+    if post:
+        refuse_unless(kind in ('trin', 'epiph') and n is not None and not feria,
+                      '"%s" belongs to a numbered Sunday after Trinity or Epiphany' % words[post[0]])
+    if shift:
+        refuse_unless(kind == 'easter' and not feria and not tag and n is None,
+                      'a weekday after a feast needs a movable feast and no number')
+
+    if kind == 'trin':
+        refuse_unless(not tag, '"Tag" does not count the Sundays after Trinity')
         base = easter_of(year, cal) + 56
-        if n is None or is_feria:
-            return base + ((n - 1) if is_feria and n else 0), 'Trinity Sunday' if n is None else 'Trinity feria %d' % n
-        return base + 7 * n, '%d. Sunday after Trinity' % n
-    if has(ADV):
-        if n is None or not 1 <= n <= 4:
+        if n is None or feria:
+            o = base + ((n - 1) if feria else 0)
+            what = 'Trinity Sunday' if n is None else 'Trinity feria %d' % n
+        else:
+            o, what = base + 7 * n, '%d. Sunday after Trinity' % n
+    elif kind == 'adv':
+        if n is None or not 1 <= n <= 4 or feria or tag:
             raise FeastError('Advent needs its Sunday, 1 to 4')
         xmas = to_ord(year, 12, 25, cal)
         adv4 = xmas - 1 - ((xmas - 1 - 6) % 7)     # the last Sunday before Christmas Day
-        return adv4 - 7 * (4 - n), '%d. Sunday of Advent' % n
-    if has(EPIPH):
+        o, what = adv4 - 7 * (4 - n), '%d. Sunday of Advent' % n
+    elif kind == 'epiph':
+        refuse_unless(not feria and not tag, 'a number with Epiphany counts the Sundays after it')
         epi = to_ord(year, 1, 6, cal)
         if n is None:
-            return epi, 'Epiphany'
-        first = epi + 1 + ((6 - (epi + 1)) % 7)     # the first Sunday after 6 Jan
-        return first + 7 * (n - 1), '%d. Sunday after Epiphany' % n
-    for prefixes, off in EASTER_REL:
-        hit = next((w for w in words if starts(w, prefixes)), None)
-        if hit is None:
-            continue
-        o = easter_of(year, cal) + off
-        extra = 0
-        if is_feria and n:
-            extra = n - 1                           # feria 2 = Monday, 3 = Tuesday
+            o, what = epi, 'Epiphany'
         else:
-            extra = next((WEEKDAY_WORDS[w] for w in words if w in WEEKDAY_WORDS), 0)
-        return o + extra, (hit if not extra else '%s + %d day(s)' % (hit, extra))
-    joined = ' '.join(words)
-    for prefixes, (m, d) in FIXED:
-        if any(starts(w, prefixes) for w in words) or any(p in joined for p in prefixes if ' ' in p):
-            return to_ord(year, m, d, cal), 'fixed feast %d %s' % (d, MON[m - 1])
-    if n is not None and 'post' in words:
-        raise FeastError('"post" with no feast named: say which (Trin., Epiph.)')
-    raise FeastError('no feast recognised in %r' % text)
+            first = epi + 1 + ((6 - (epi + 1)) % 7)     # the first Sunday after 6 Jan
+            o, what = first + 7 * (n - 1), '%d. Sunday after Epiphany' % n
+    else:
+        if kind == 'easter':
+            prefixes, off = EASTER_REL[key]
+            o = easter_of(year, cal) + off
+        else:
+            prefixes, (m, d) = FIXED[key]
+            o = to_ord(year, m, d, cal)
+        hit = words[min(found[(kind, key)])] if kind == 'easter' else 'fixed feast %d %s' % (d, MON[m - 1])
+        extra = 0
+        if feria:
+            refuse_unless(kind == 'easter', 'feria counts from a movable feast')
+            extra = n - 1                           # feria 2 = Monday, 3 = Tuesday
+        elif tag and n is not None:
+            refuse_unless((kind, key) in DAY_FEASTS,
+                          'only Ostertag, Pfingsttag and Weihnachtstag count their days')
+            refuse_unless(1 <= n <= FEAST_DAYS, 'a feast was kept %d days at most' % FEAST_DAYS)
+            extra = n - 1                           # 2. Ostertag = Monday
+        elif n is not None:
+            raise FeastError('the number %d is not used by %s in %r: a day of the feast is '
+                             'written "%d. Ostertag" or "Fer. %d. Pasch."' % (n, hit, text, n, n))
+        elif shift:
+            extra = WEEKDAY_WORDS[words[shift[0]]]
+        o += extra
+        what = hit if not extra else '%s + %d day(s)' % (hit, extra)
+        if last:
+            what += ' (letzter = %d.)' % FEAST_DAYS
+    for i in check:
+        want = CHECK_WEEKDAY[words[i]]
+        refuse_unless(o % 7 == want, '"%s", but %s is a %s' % (words[i], show(o, cal), DAY[o % 7]))
+    return o, what
 
 
 def feast_date(text, year=None, cal='P'):

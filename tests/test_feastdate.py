@@ -200,3 +200,86 @@ def test_cal_of_year_answers_for_the_day():
     assert cal_of_year(1700, 'P') == 'G'
     assert cal_of_year(1699, 'P') == 'J'
     assert cal_of_year(1700, 'G', 1, 6) == 'G'
+
+
+# The day of a German feast, counted: #353. Each row is dated in a register.
+@pytest.mark.parametrize('text, want', [
+    # Rompf-54: "d. 3.t April 1747, war der 2t Ostertag"
+    ('der 2t Ostertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('2. Ostertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('der 2te Ostertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('2ter Ostertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('zweiter Ostertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('2. Oster Tag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    ('2. Osterfeiertag 1747', 'Mon 3 Apr 1747 (Gregorian)'),
+    # Langsdorff-15: "Den 19. t. April 1740, als d. 3ten Ostertag"
+    ('3. Ostertag 1740', 'Tue 19 Apr 1740 (Gregorian)'),
+    ('d. 3ten Ostertag 1740', 'Tue 19 Apr 1740 (Gregorian)'),
+    # Pohl-Göns KB1 p. 67: "Den 11. April war der dritte Ostertag"
+    ('dritter Ostertag 1699', 'Tue 11 Apr 1699 (Julian)'),
+    ('der dritte Ostertag 1699', 'Tue 11 Apr 1699 (Julian)'),
+    # KB1 p. 217: "d 1 April, war der letzte Ostertag"
+    ('letzter Ostertag 1766', 'Tue 1 Apr 1766 (Gregorian)'),
+    ('der letzte Ostertag 1766', 'Tue 1 Apr 1766 (Gregorian)'),
+    ('erster Ostertag 1747', 'Sun 2 Apr 1747 (Gregorian)'),
+    ('Ostertag 1747', 'Sun 2 Apr 1747 (Gregorian)'),
+    ('2. Pfingsttag 1740', 'Mon 6 Jun 1740 (Gregorian)'),
+    ('3. Pfingsttag 1740', 'Tue 7 Jun 1740 (Gregorian)'),
+    ('zweiter Pfingstfeiertag 1740', 'Mon 6 Jun 1740 (Gregorian)'),
+    ('2. Weihnachtstag 1740', 'Mon 26 Dec 1740 (Gregorian)'),
+    ('3. Weihnachtstag 1740', 'Tue 27 Dec 1740 (Gregorian)'),
+    ('2. Christtag 1740', 'Mon 26 Dec 1740 (Gregorian)'),
+    ('Feria secunda Paschatos 1740', 'Mon 18 Apr 1740 (Gregorian)'),
+    ('Fer. tertia Pent. 1740', 'Tue 7 Jun 1740 (Gregorian)'),
+])
+def test_day_of_the_feast(text, want):
+    assert feast_date(text) == want
+
+
+# Nothing in the text may be dropped: a word or number the parser cannot account for is
+# refused, never skipped. Each of these used to answer a plausible wrong date.
+@pytest.mark.parametrize('bad, why', [
+    ('2. Ostern 1747', 'not used'),                 # the Sunday, with the 2 dropped
+    ('2. Pfingsten 1740', 'not used'),
+    ('2. Weihnachten 1740', 'not used'),
+    ('2. Palm. 1740', 'not used'),
+    ('Dom. 2. post Pascha 1740', 'post'),           # the Sunday after Easter is not built
+    ('Dom. post Nativ. 1740', 'post'),
+    ('4. Ostertag 1740', 'at most'),
+    ('2. Palmtag 1740', 'not used'),
+    ('2. Johannistag 1740', 'not used'),
+    ('letzter Palm. 1740', 'letzter'),
+    ('2. Ostermontag 1740', 'weekday'),
+    ('Fer. 2. Ostermontag 1740', 'weekday'),
+    ('Fer. Pasch. 1740', 'feria needs'),
+    ('Fer. 2. Nativ. 1740', 'feria'),
+    ('Dom. Palm. Oculi 1740', 'more than one feast'),
+    ('2. 3. Ostertag 1740', 'more than one ordinal'),
+    ('Grüner Donnerstag 1740', 'no feast'),
+    ('Dom. Palm. Jahr 1740', 'unrecognised'),
+    ('Good Sunday 1740', 'is a Fri'),                 # a weekday that disagrees
+    ('Dominica Viridium 1740', 'is a Thu'),
+    # The register's whole sentence carries a calendar date too: refuse, do not guess.
+    ('d. 3.t April 1747, war der 2t Ostertag', 'more than one ordinal'),
+])
+def test_unaccounted_input_is_refused(bad, why):
+    with pytest.raises(FeastError) as e:
+        resolve(bad)
+    assert why.lower() in str(e.value).lower()
+
+
+@pytest.mark.parametrize('text', [
+    'Dominica Palmarum 1740', 'Festo S. Michaelis 1740', 'Weißer Sonntag 1740',
+    'Coena Domini 1740', 'Dom. Esto mihi 1740', 'Mariae Verk. 1740', 'Mariä Verkündigung 1740',
+    'Joh. Bapt. 1740', 'Fest. Ascens. Domini 1740', 'Christi Himmelfahrt 1740',
+    'Palmsonntag 1740', 'Good Friday 1740', 'Easter Day 1740', 'Dom. Quasimodo geniti 1740',
+])
+def test_connecting_words_still_accepted(text):
+    resolve(text)
+
+
+def test_day_of_the_feast_cli(capsys):
+    assert main(['der 2t Ostertag 1747']) == 0
+    assert 'Mon 3 Apr 1747 (Gregorian)' in capsys.readouterr().out
+    assert main(['2. Ostern 1747']) == 2
+    assert 'not used' in capsys.readouterr().err
