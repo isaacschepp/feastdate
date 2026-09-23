@@ -9,7 +9,7 @@ from .core import (  # noqa: F401
     g2o, greg_easter, j2o, julian_easter, o2g, o2j, resolve, show, to_ord,
 )
 
-__version__ = '1.0.4'
+__version__ = '1.0.5'
 
 __all__ = [
     'feast_date', 'resolve', 'show', 'FeastError',
